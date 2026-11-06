@@ -76,3 +76,21 @@ na tela `/administrativo/contratos` ou no webhook do HubSpot (`Api/HubspotWebhoo
 
 Depois do backfill: `SELECT data_vencimento_origem, COUNT(*) FROM contratos_servico WHERE ativo=1 GROUP BY 1`.
 Roteiro completo de ativação: `.planning/phases/202-renova-o-contratual-vencimento-de-contratos-e-oportunidade-d/202-ATIVACAO.md`.
+
+## Achados da ativação em produção (06/11/2026)
+
+- **Data de fim do HubSpot vem em epoch MILISSEGUNDOS** (`hs_recurring_billing_end_date = '1796256000000'` =
+  03/12/2026, meia-noite UTC). `Carbon::parse()` desse número gravou término em **1796/1825** em 3 contratos da
+  Imersão Melicidade (464, 468). O teste original usava a forma ISO ('2027-01-31') e mascarou — mesma classe do
+  `toObjectId` dos fakes do HubSpot: **fake com a forma imaginada, não a real**. Corrigido em `a2786846c`
+  (`createFromTimestampMs(..., 'UTC')`) e as linhas regravadas por `contratos:calcular-termino --aplicar`
+  (ação `corrigir_hubspot`, que só toca origem `hubspot` divergente do snapshot). Conferência: nenhuma data < 1900.
+- **66 contratos (de 190 calculados) têm início = 25/05/2026, a data do REIMPORT** — o término calculado
+  (25/05/2027) não é o real e todos entrariam juntos na janela por volta de 25/03/2027. Decisão do usuário:
+  gravar e o administrativo corrige a data real pela tela até jan/2027 (vira `manual`, nunca sobrescrita).
+- **Contratos `P4M` (4 meses)**: 8 linhas terminam entre 30/11 e 31/12/2026 e já estão na janela; nenhuma tem
+  `hubspot_company_id`, então vão para revisão manual quando a automação ligar.
+- O backfill gravou: 190 `calculada`, 38 `manual`, 3 `hubspot`; universo da tela sem término = 0.
+- Campos `ecf_renovacao_chave` e `ecf_negocio_original_id` criados no HubSpot (token tem escrita de esquema).
+- `renovacao:verificar --simular` CRIA as linhas de ciclo no banco (só não escreve no HubSpot) — rodar só
+  quando quiser ver a decisão, sabendo que os ciclos ficam.
