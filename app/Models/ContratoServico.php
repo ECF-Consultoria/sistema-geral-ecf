@@ -38,12 +38,63 @@ class ContratoServico extends Model
 
     protected $table = 'contratos_servico';
 
+    // Fase 202 (REN-01) — origem rastreável do término (D-03).
+    public const ORIGEM_TERMINO_MANUAL    = 'manual';
+    public const ORIGEM_TERMINO_HUBSPOT   = 'hubspot';
+    public const ORIGEM_TERMINO_CALCULADA = 'calculada';
+    public const ORIGEM_TERMINO_RENOVACAO = 'renovacao';
+
+    /**
+     * Origem informada pelo SISTEMA em `gravarTermino()`. Propriedade
+     * transitória (não persistida): não dá para inferir pela dirtiness, pois
+     * origem repetida (renovacao->renovacao) não aparece como dirty.
+     */
+    protected ?string $origemTerminoExplicita = null;
+
+    protected static function booted(): void
+    {
+        static::saving(function (ContratoServico $cs) {
+            if ($cs->origemTerminoExplicita !== null) {
+                $cs->data_vencimento_origem = $cs->origemTerminoExplicita;
+
+                return;
+            }
+
+            // Edição humana (controllers existentes) vira 'manual' sem tocar neles.
+            if ($cs->isDirty('data_vencimento')) {
+                $cs->data_vencimento_origem = $cs->data_vencimento !== null
+                    ? self::ORIGEM_TERMINO_MANUAL
+                    : null;
+            }
+        });
+    }
+
+    /**
+     * Único caminho para o SISTEMA gravar término (backfill, renovação,
+     * webhook). Nunca usar update(['data_vencimento' => ...]) em código de
+     * sistema: isso marcaria a data como 'manual'.
+     */
+    public function gravarTermino(\Carbon\CarbonInterface|string|null $data, string $origem): bool
+    {
+        $this->origemTerminoExplicita = $origem;
+
+        try {
+            $this->fill(['data_vencimento' => $data, 'data_vencimento_origem' => $origem]);
+
+            return $this->save();
+        } finally {
+            $this->origemTerminoExplicita = null;
+        }
+    }
+
     protected $fillable = [
         'company_id',
         'servico_id',
         'valor_contratado',
         'data_contratacao',
         'data_vencimento',
+        // Fase 202 (REN-01) — manual|hubspot|calculada|renovacao.
+        'data_vencimento_origem',
         'ativo',
         'observacoes',
         // Quick 260819-guy — data da 1ª parcela (data única) e dia do mês
@@ -92,6 +143,7 @@ class ContratoServico extends Model
                 'valor_contratado',
                 'data_contratacao',
                 'data_vencimento',
+                'data_vencimento_origem',
                 'ativo',
             ])
             ->logOnlyDirty()
