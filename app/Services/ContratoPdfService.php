@@ -9,6 +9,7 @@ use App\Models\ContratoAssinatura;
 // injeção de construtor.
 use App\Services\Clicksign\ContratoVariaveisModeloService;
 use App\Services\Contratos\TabelaDoContratoService;
+use App\Services\Contratos\VigenciaContrato;
 use Carbon\Carbon;
 
 /**
@@ -56,7 +57,7 @@ class ContratoPdfService
      * não diz quantas parcelas o contrato tem: os mesmos 12 meses que o
      * modelo de Gestão trazia escritos na Cláusula 11ª.
      */
-    public const VIGENCIA_MESES_PADRAO = 12;
+    public const VIGENCIA_MESES_PADRAO = VigenciaContrato::MESES_PADRAO;
 
     /**
      * Monta o array de dados do contrato a partir do `servicos_snapshot`
@@ -335,22 +336,8 @@ class ContratoPdfService
      */
     private function vigenciaEmMeses(array $snapshot): string
     {
-        $mesesPorServico = [];
-
-        foreach ($snapshot as $fase) {
-            $parcelas = $fase['parcelas'] ?? null;
-
-            if (!is_numeric($parcelas) || (int) $parcelas <= 0) {
-                $mesesPorServico = [];
-
-                break;
-            }
-
-            $nome = $fase['servico'] ?? '';
-            $mesesPorServico[$nome] = ($mesesPorServico[$nome] ?? 0) + (int) $parcelas;
-        }
-
-        $meses = $mesesPorServico === [] ? self::VIGENCIA_MESES_PADRAO : max($mesesPorServico);
+        // Fase 202: regra movida para VigenciaContrato (fonte única, também usada pelo término).
+        $meses = VigenciaContrato::mesesDoGrupo($snapshot);
 
         return "{$meses} ({$this->numeroPorExtenso($meses)})";
     }
