@@ -19,6 +19,8 @@ use App\Services\Hubspot\HubspotHandoffData;
 use App\Services\Hubspot\HubspotNameNormalizer;
 use App\Services\Hubspot\HubspotOwnerResolver;
 use App\Services\HubspotApiClient;
+use App\Services\Renovacao\RenovacaoWebhookHandler;
+use App\Services\Contratos\TerminoContratoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\AudienciaComercial;
 use Illuminate\Http\JsonResponse;
@@ -133,6 +135,18 @@ class HubspotWebhookController extends Controller
      */
     private function processar(HubspotEvento $evento, HubspotApiClient $api): void
     {
+        // Fase 202 (REN-05) — renovação NUNCA entra no fluxo de venda ganha: desvio
+        // por etapa ANTES de qualquer filtro (protege mesmo se o ID da etapa de
+        // renovação estiver por engano no CSV de Fechado Ganho — risco de loop).
+        if (
+            $evento->subscription_type === 'deal.propertyChange'
+            && $evento->property_name === 'dealstage'
+            && app(RenovacaoWebhookHandler::class)->ehEtapaDeRenovacao($evento->property_value)
+        ) {
+            app(RenovacaoWebhookHandler::class)->tratar($evento, $api);
+            return;
+        }
+
         // Phase 34 hotfix — aceita CSV de stage IDs porque a conta HubSpot tem
         // multiplos pipelines (Polos / Infoprodutos / Sales default) e cada um
         // tem seu proprio dealstage id de "Fechado Ganho".
@@ -187,9 +201,15 @@ class HubspotWebhookController extends Controller
             $propsContact = config('services.hubspot.props.contact');
 
             $deal       = $api->fetchDeal((string) $evento->object_id, array_merge(
-                ['dealname', 'amount', 'dealstage'],
+                ['dealname', 'amount', 'dealstage', (string) config('services.hubspot.renovacao.propriedade_chave')],
                 array_values($propsDeal),
             ));
+
+            // Fase 202 (REN-05) — negócio de renovação arrastado para etapa de venda.
+            if (app(RenovacaoWebhookHandler::class)->ehNegocioDeRenovacao($deal['properties'] ?? [])) {
+                app(RenovacaoWebhookHandler::class)->tratar($evento, $api);
+                return;
+            }
             $companyId  = $api->fetchAssociatedCompanyId((string) $evento->object_id);
             $hubCompany = $companyId ? $api->fetchCompany($companyId, array_values($propsCompany)) : null;
 
@@ -337,6 +357,16 @@ class HubspotWebhookController extends Controller
     {
         $warnings = [];
 
+        // Fase 202 (REN-05) — replay também respeita o desvio de renovação.
+        if (
+            $evento->subscription_type === 'deal.propertyChange'
+            && $evento->property_name === 'dealstage'
+            && app(RenovacaoWebhookHandler::class)->ehEtapaDeRenovacao($evento->property_value)
+        ) {
+            app(RenovacaoWebhookHandler::class)->tratar($evento, $api);
+            return $this->resumoRenovacao($evento);
+        }
+
         Log::channel('ecf-webhooks')->info('[Hubspot] Replay: iniciando reprocessamento', [
             'evento_id' => $evento->id,
             'deal_id'   => $evento->object_id,
@@ -348,9 +378,15 @@ class HubspotWebhookController extends Controller
             $propsContact = config('services.hubspot.props.contact');
 
             $deal       = $api->fetchDeal((string) $evento->object_id, array_merge(
-                ['dealname', 'amount', 'dealstage'],
+                ['dealname', 'amount', 'dealstage', (string) config('services.hubspot.renovacao.propriedade_chave')],
                 array_values($propsDeal),
             ));
+
+            // Fase 202 (REN-05) — negócio de renovação arrastado para etapa de venda.
+            if (app(RenovacaoWebhookHandler::class)->ehNegocioDeRenovacao($deal['properties'] ?? [])) {
+                app(RenovacaoWebhookHandler::class)->tratar($evento, $api);
+                return $this->resumoRenovacao($evento);
+            }
             $companyId  = $api->fetchAssociatedCompanyId((string) $evento->object_id);
             $hubCompany = $companyId ? $api->fetchCompany($companyId, array_values($propsCompany)) : null;
 
@@ -992,6 +1028,20 @@ class HubspotWebhookController extends Controller
      * @param  HubspotEvento|null $evento   necessario para gravar payload de warnings
      * @return array<int, string>           nomes dos servicos criados (alimenta rotearImplementacao)
      */
+    /** Resumo do replay quando o evento foi tratado como renovação (nada de empresa/contrato). */
+    private function resumoRenovacao(HubspotEvento $evento): array
+    {
+        return [
+            'evento_id'             => $evento->id,
+            'deal_id'               => $evento->object_id,
+            'company_id'            => null,
+            'contratos_criados'     => 0,
+            'contratos_ignorados'   => 0,
+            'empresas_enriquecidas' => 0,
+            'warnings'              => ['Negócio de renovação — tratado pelo fluxo de renovação, não pelo de venda'],
+        ];
+    }
+
     private function persistirContratos(Company $company, HubspotHandoffData $handoff, ?HubspotEvento $evento): array
     {
         $servicosCriados = [];
@@ -1075,6 +1125,12 @@ class HubspotWebhookController extends Controller
             ]);
 
             $servicosCriados[] = $c['servico_nome'];
+        }
+
+        // Fase 202 (REN-01, entrada) — contrato novo já nasce com término calculado.
+        // Só por este serviço (gravarTermino explícito); o webhook não grava data direto.
+        if ($servicosCriados !== []) {
+            app(TerminoContratoService::class)->preencherEmpresa($company);
         }
 
         // ── Warnings do handoff: 2 shapes distintos (Plan 112-02) ───────────────
