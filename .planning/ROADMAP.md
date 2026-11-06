@@ -5376,6 +5376,16 @@ decisões seguem em aberto e bloqueiam fases nomeadas** (chips estruturados e a 
 antigas foram RESPONDIDAS por medição** em 14/10 — a regeneração de uma imagem existe, o criativo é
 alcançável por `pub_imagem_id` (nenhuma coluna nova) e o vínculo com a original existe mas é efêmero.*
 
+### Phase 202: Renovação contratual — vencimento de contratos e oportunidade de renovação no HubSpot
+
+**Goal:** Todo contrato ativo tem data de término; 2 meses de calendário antes dela o sistema cria, uma única vez por contrato/ciclo, um negócio NOVO no pipeline "Renovações contrato" do HubSpot (o original Ganho fica intocado), visível e reprocessável na tela de contratos; quando a renovação vai para "Negócio fechado", o contrato é estendido. Plano-fonte: `PLANO_RENOVACAO_CONTRATUAL_ECF_ADMIN.md`; decisões em `202-CONTEXT.md`.
+**Requirements**: REN-01..REN-08 (ver 202-CONTEXT.md)
+**Depends on:** Nenhuma (independente da v28.0)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 202 to break down)
+
 ---
 
 ## Milestone v28.0 — Acervo de imagens no Cloudflare R2 (Fases 195-201)
