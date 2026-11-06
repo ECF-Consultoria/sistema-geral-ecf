@@ -6,6 +6,7 @@ import { Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import { FileSignature, Search, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
+import RenovacaoCelula from '@/Components/Contratos/RenovacaoCelula';
 import { cn, formatDate } from '@/lib/utils';
 import {
     CONTRATO_STATUS_LABELS,
@@ -50,6 +51,36 @@ const ETAPA_LABELS = {
     em_operacao:               'Em Operação',
 };
 
+// ─── Fase 202 (REN-06) — filtros de renovação, com explicação em linguagem simples.
+const RENOVACAO_FILTROS = [
+    ['vence_30d', 'Vence em até 30 dias', 'Contratos que terminam nos próximos 30 dias.'],
+    ['vence_2m', 'Vence em até 2 meses', 'Contratos que já entraram na janela de renovação (começa 2 meses antes do término) e ainda não venceram.'],
+    ['vencido', 'Vencido', 'Contratos cuja data de término já passou.'],
+    ['renovado', 'Renovado', 'Contratos que já tiveram uma renovação fechada.'],
+    ['sem_termino', 'Sem data de término', 'Contratos sem data de término cadastrada: o sistema não consegue avisar quando vencem.'],
+    ['erro_sync', 'Erro ao enviar ao HubSpot', 'O sistema tentou abrir a oportunidade de renovação no HubSpot e deu erro. Use "Sincronizar novamente".'],
+    ['revisao_manual', 'Precisa de revisão', 'O sistema parou de tentar sozinho e precisa que uma pessoa confira no HubSpot antes de continuar.'],
+    ['aguardando_conciliacao', 'Aguardando confirmação do HubSpot', 'O sistema pediu para criar a oportunidade mas o HubSpot ainda não confirmou. Ele confere sozinho para não duplicar.'],
+];
+
+const ORIGEM_TERMINO = {
+    manual:    { texto: 'digitada', title: 'Data digitada por uma pessoa no cadastro.' },
+    hubspot:   { texto: 'do HubSpot', title: 'Data que veio do negócio no HubSpot.' },
+    calculada: {
+        texto: 'calculada',
+        title: "Calculada pelo sistema: início + vigência do contrato. A data de início pode ser a do cadastro, não a da assinatura — confira e corrija no cadastro da empresa; a correção vira 'digitada'.",
+    },
+    renovacao: { texto: 'renovação', title: 'Data estendida automaticamente quando a renovação foi fechada.' },
+};
+
+function textoDias(dias) {
+    if (dias === null || dias === undefined) return null;
+    if (dias === 0) return 'vence hoje';
+    if (dias > 0) return `em ${dias} dia${dias === 1 ? '' : 's'}`;
+    const n = Math.abs(dias);
+    return `venceu há ${n} dia${n === 1 ? '' : 's'}`;
+}
+
 /**
  * Admin/Contratos.jsx — Fase 131 Plano 03 (UI-01, D-01, D-04, D-09).
  *
@@ -65,7 +96,7 @@ const ETAPA_LABELS = {
  * (`admin.contratos.show`), que é onde o Administrativo completa o
  * cadastro e dispara a geração do contrato.
  */
-export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0, bloqueio_ativo = false, servicos = [] }) {
+export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0, bloqueio_ativo = false, servicos = [], renovacao_resumo = {}, renovacao_config = {} }) {
     const [qInput, setQInput] = useState(filters.q || '');
     const debounceRef = useRef(null);
 
@@ -126,6 +157,18 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                         </div>
                     )}
 
+                    {/* Fase 202 (REN-07) — aviso de automação desligada ou em simulação. */}
+                    {renovacao_config?.ativa === false && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-300">
+                            A abertura automática de oportunidades de renovação está desligada. Nada é enviado ao HubSpot sem alguém clicar em Sincronizar.
+                        </div>
+                    )}
+                    {renovacao_config?.simulacao === true && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-300">
+                            Modo simulação: o sistema só registra o que faria; nada é criado no HubSpot.
+                        </div>
+                    )}
+
                     {/* Ponto focal — grid de resumo por situação, 7 estados (D-04),
                         também funciona como filtro. NÃO copiar o número de colunas
                         do grid de pendências do Comercial (lá são 8 pendências,
@@ -166,6 +209,30 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                     >
                         {sem_contrato_count} empresa{sem_contrato_count === 1 ? '' : 's'} aguardando o Administrativo
                     </button>
+
+                    {/* Fase 202 (REN-06) — filtros de renovação (chips; clicar de novo desmarca). */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[12px] text-white/40 mr-1">Renovação:</span>
+                        {RENOVACAO_FILTROS.map(([chave, rotulo, explicacao]) => {
+                            const ativo = filters.renovacao === chave;
+                            return (
+                                <button
+                                    key={chave}
+                                    type="button"
+                                    title={explicacao}
+                                    onClick={() => applyFilter('renovacao', ativo ? null : chave)}
+                                    className={cn(
+                                        'rounded-lg border px-2.5 py-1 text-[12px] transition-colors',
+                                        ativo
+                                            ? 'border-ecf-yellow bg-ecf-yellow/[0.06] text-white'
+                                            : 'border-white/[0.08] bg-white/[0.02] text-white/60 hover:bg-white/[0.04]'
+                                    )}
+                                >
+                                    {rotulo} <span className="tabular-nums font-semibold text-white/80">{renovacao_resumo?.[chave] ?? 0}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
 
                     {/* Busca, filtro por serviço e ordenação — mesma marcação da
                         barra de Comercial/EmpresasListagem.jsx (select nativo com
@@ -226,17 +293,18 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                         <TableHead className="text-[11px] uppercase tracking-wide">Situação</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Parado há</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Término</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Renovação</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Ações</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {linhasData.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={12} className="text-center py-10">
+                                            <TableCell colSpan={13} className="text-center py-10">
                                                 {/* O vazio precisa dizer QUAL recorte esvaziou a lista —
                                                     antes citava só a busca, e quem tinha esvaziado pelo
                                                     filtro de serviço lia uma explicação que não era a dele. */}
-                                                {(filters.q || filters.servico || filters.situacao) ? (
+                                                {(filters.q || filters.servico || filters.situacao || filters.renovacao) ? (
                                                     <p className="text-[13px] text-white/40">
                                                         {filters.q
                                                             ? <>Nenhuma empresa encontrada para "{filters.q}" com os filtros atuais.</>
@@ -312,9 +380,30 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                             {/* Término vazio é contrato por prazo indeterminado, não
                                                 dado faltando — por isso "Sem prazo" e não "—". */}
                                             <TableCell className="text-[13px] text-white/50">
-                                                {linha.data_vencimento
-                                                    ? formatDate(linha.data_vencimento)
-                                                    : <span className="text-white/30">Sem prazo</span>}
+                                                {linha.data_vencimento ? (
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span>{formatDate(linha.data_vencimento)}</span>
+                                                        {textoDias(linha.renovacao?.dias_restantes) && (
+                                                            <span className={cn(
+                                                                'text-[11px]',
+                                                                linha.renovacao.dias_restantes < 0 ? 'text-red-300' : (linha.renovacao.vence_30d ? 'text-amber-300' : 'text-white/40')
+                                                            )}>
+                                                                {textoDias(linha.renovacao.dias_restantes)}
+                                                            </span>
+                                                        )}
+                                                        {ORIGEM_TERMINO[linha.renovacao?.termino_origem] && (
+                                                            <span
+                                                                className="text-[10px] text-white/40 underline decoration-dotted cursor-help"
+                                                                title={ORIGEM_TERMINO[linha.renovacao.termino_origem].title}
+                                                            >
+                                                                {ORIGEM_TERMINO[linha.renovacao.termino_origem].texto}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ) : <span className="text-white/30">Sem prazo</span>}
+                                            </TableCell>
+                                            <TableCell>
+                                                <RenovacaoCelula linha={linha} />
                                             </TableCell>
                                             <TableCell>
                                                 <Link
