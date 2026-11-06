@@ -2,8 +2,13 @@
 
 namespace App\Services;
 
+use App\Services\Hubspot\HubspotErroApi;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 
 /**
  * Phase 34 Plan 34-04 — Wrapper HTTP para HubSpot CRM API v3.
@@ -675,5 +680,302 @@ class HubspotApiClient
         }
 
         return $res->json();
+    }
+
+    // ─── Fase 202 — renovação contratual ───
+    // Escrita (criarDeal) NUNCA é repetida automaticamente: timeout/5xx depois
+    // do envio vira "resultado incerto" e quem chama concilia pela chave de
+    // correlação. Leituras (GET/search/PUT idempotente) têm retry com backoff.
+
+    private function requisicao(): PendingRequest
+    {
+        return Http::withToken($this->token)
+            ->acceptJson()
+            ->timeout((int) config('services.hubspot.renovacao.timeout_segundos', 20))
+            ->connectTimeout(5);
+    }
+
+    /** Corpo da resposta truncado em 500 chars (nunca inclui o token). */
+    private function corpoResumido(Response $res): string
+    {
+        return mb_substr((string) $res->body(), 0, 500);
+    }
+
+    private function retryAfterDe(Response $res): int
+    {
+        $h = $res->header('Retry-After');
+        return is_numeric($h) ? max(0, (int) $h) : 10;
+    }
+
+    /**
+     * Requisição de leitura (ou escrita idempotente) com retry manual.
+     * 404 é devolvido ao chamador; demais 4xx são permanentes.
+     *
+     * @throws HubspotErroApi
+     */
+    private function leitura(string $metodo, string $caminho, array $dados = []): Response
+    {
+        $max     = max(1, (int) config('services.hubspot.renovacao.tentativas_leitura', 3));
+        $backoff = [1, 2, 4];
+        $ultimo  = null;
+
+        for ($i = 1; $i <= $max; $i++) {
+            try {
+                $req = $this->requisicao();
+                $res = match ($metodo) {
+                    'get'   => $req->get(self::BASE . $caminho, $dados),
+                    'post'  => $req->post(self::BASE . $caminho, $dados),
+                    default => $req->send(strtoupper($metodo), self::BASE . $caminho),
+                };
+            } catch (ConnectionException $e) {
+                $ultimo = new HubspotErroApi(
+                    "[Renovacao] HubSpot sem conexão em {$metodo} {$caminho}",
+                    HubspotErroApi::TEMPORARIO, null, null, $e
+                );
+                if ($i < $max) {
+                    Sleep::for($backoff[min($i - 1, 2)])->seconds();
+                }
+                continue;
+            }
+
+            $status = $res->status();
+            if ($status === 429) {
+                $espera = $this->retryAfterDe($res);
+                $ultimo = new HubspotErroApi(
+                    "[Renovacao] HubSpot 429 (limite) em {$metodo} {$caminho}",
+                    HubspotErroApi::LIMITE, 429, $espera
+                );
+                if ($i < $max) {
+                    Sleep::for(min($espera, 10))->seconds();
+                }
+                continue;
+            }
+            if ($status >= 500) {
+                $ultimo = new HubspotErroApi(
+                    "[Renovacao] HubSpot {$status} em {$metodo} {$caminho}: " . $this->corpoResumido($res),
+                    HubspotErroApi::TEMPORARIO, $status
+                );
+                if ($i < $max) {
+                    Sleep::for($backoff[min($i - 1, 2)])->seconds();
+                }
+                continue;
+            }
+            if ($status === 404) {
+                return $res;
+            }
+            if ($status >= 400) {
+                throw new HubspotErroApi(
+                    "[Renovacao] HubSpot {$status} em {$metodo} {$caminho}: " . $this->corpoResumido($res),
+                    HubspotErroApi::PERMANENTE, $status
+                );
+            }
+
+            return $res;
+        }
+
+        throw $ultimo;
+    }
+
+    /**
+     * POST /crm/v3/objects/deals — SEM retry. Associa à empresa (tipo 5) e ao
+     * contato (tipo 3), quando informados.
+     *
+     * @return array{id: string, properties: array}
+     * @throws HubspotErroApi
+     */
+    public function criarDeal(array $properties, ?string $companyId, ?string $contactId): array
+    {
+        $associacoes = [];
+        if ($companyId) {
+            $associacoes[] = [
+                'to'    => ['id' => $companyId],
+                'types' => [['associationCategory' => 'HUBSPOT_DEFINED', 'associationTypeId' => 5]],
+            ];
+        }
+        if ($contactId) {
+            $associacoes[] = [
+                'to'    => ['id' => $contactId],
+                'types' => [['associationCategory' => 'HUBSPOT_DEFINED', 'associationTypeId' => 3]],
+            ];
+        }
+
+        $corpo = ['properties' => $properties];
+        if ($associacoes) {
+            $corpo['associations'] = $associacoes;
+        }
+
+        try {
+            $res = $this->requisicao()->post(self::BASE . '/crm/v3/objects/deals', $corpo);
+        } catch (ConnectionException $e) {
+            throw new HubspotErroApi(
+                '[Renovacao] criarDeal: timeout/conexão após o envio — resultado incerto',
+                HubspotErroApi::INCERTO, null, null, $e
+            );
+        }
+
+        $status = $res->status();
+        if ($status === 201 || $status === 200) {
+            return [
+                'id'         => (string) $res->json('id'),
+                'properties' => $res->json('properties') ?? [],
+            ];
+        }
+        if ($status === 429) {
+            throw new HubspotErroApi(
+                '[Renovacao] criarDeal: HubSpot 429 (limite)',
+                HubspotErroApi::LIMITE, 429, $this->retryAfterDe($res)
+            );
+        }
+        if ($status >= 500) {
+            throw new HubspotErroApi(
+                "[Renovacao] criarDeal: HubSpot {$status} — resultado incerto: " . $this->corpoResumido($res),
+                HubspotErroApi::INCERTO, $status
+            );
+        }
+        if ($status === 409) {
+            throw new HubspotErroApi(
+                '[Renovacao] criarDeal: HubSpot 409 (conflito): ' . $this->corpoResumido($res),
+                HubspotErroApi::CONFLITO, 409
+            );
+        }
+
+        throw new HubspotErroApi(
+            "[Renovacao] criarDeal: HubSpot {$status}: " . $this->corpoResumido($res),
+            HubspotErroApi::PERMANENTE, $status
+        );
+    }
+
+    /**
+     * POST /crm/v3/objects/deals/search (leitura; pode repetir).
+     *
+     * @return array<int, array{id: string, properties: array}>
+     * @throws HubspotErroApi
+     */
+    public function buscarDealsPorPropriedade(string $propriedade, string $valor, array $properties): array
+    {
+        $res = $this->leitura('post', '/crm/v3/objects/deals/search', [
+            'filterGroups' => [[
+                'filters' => [['propertyName' => $propriedade, 'operator' => 'EQ', 'value' => $valor]],
+            ]],
+            'properties' => array_values($properties),
+            'limit'      => 10,
+        ]);
+
+        return array_values(array_map(
+            static fn ($r) => ['id' => (string) ($r['id'] ?? ''), 'properties' => $r['properties'] ?? []],
+            $res->json('results') ?? []
+        ));
+    }
+
+    /**
+     * GET deal; 404 (apagado/arquivado) => null.
+     *
+     * @throws HubspotErroApi
+     */
+    public function buscarDealOuNull(string $id, array $properties): ?array
+    {
+        $res = $this->leitura('get', "/crm/v3/objects/deals/{$id}", [
+            'properties' => implode(',', $properties),
+        ]);
+
+        return $res->status() === 404 ? null : $res->json();
+    }
+
+    /**
+     * GET /crm/v3/pipelines/deals/{id}.
+     *
+     * @return array{id: string, label: string, stages: array<int, array{id: string, label: string, fechado: bool}>}
+     * @throws HubspotErroApi
+     */
+    public function buscarPipelineDeDeals(string $pipelineId): array
+    {
+        $res = $this->leitura('get', "/crm/v3/pipelines/deals/{$pipelineId}");
+        if ($res->status() === 404) {
+            throw new HubspotErroApi(
+                "[Renovacao] pipeline {$pipelineId} não encontrado no HubSpot",
+                HubspotErroApi::PERMANENTE, 404
+            );
+        }
+
+        $stages = array_map(static fn ($s) => [
+            'id'      => (string) ($s['id'] ?? ''),
+            'label'   => (string) ($s['label'] ?? ''),
+            // metadata.isClosed vem como string "true"/"false".
+            'fechado' => filter_var($s['metadata']['isClosed'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ], $res->json('stages') ?? []);
+
+        return [
+            'id'     => (string) $res->json('id'),
+            'label'  => (string) $res->json('label'),
+            'stages' => array_values($stages),
+        ];
+    }
+
+    /** GET /crm/v3/properties/deals/{nome}; 404 => null. */
+    public function buscarPropriedadeDeDeal(string $nome): ?array
+    {
+        $res = $this->leitura('get', "/crm/v3/properties/deals/{$nome}");
+
+        return $res->status() === 404 ? null : $res->json();
+    }
+
+    /**
+     * POST /crm/v3/properties/deals — só via comando renovacao:hubspot-preparar --aplicar.
+     * Sem retry (escrita).
+     *
+     * @throws HubspotErroApi
+     */
+    public function criarPropriedadeDeDeal(string $nome, string $label, bool $unica): array
+    {
+        try {
+            $res = $this->requisicao()->post(self::BASE . '/crm/v3/properties/deals', [
+                'name'           => $nome,
+                'label'          => $label,
+                'type'           => 'string',
+                'fieldType'      => 'text',
+                'groupName'      => 'dealinformation',
+                'hasUniqueValue' => $unica,
+            ]);
+        } catch (ConnectionException $e) {
+            throw new HubspotErroApi(
+                "[Renovacao] criarPropriedadeDeDeal({$nome}): conexão — resultado incerto",
+                HubspotErroApi::INCERTO, null, null, $e
+            );
+        }
+
+        if ($res->successful()) {
+            return $res->json() ?? [];
+        }
+
+        $status = $res->status();
+        $tipo   = $status === 429 ? HubspotErroApi::LIMITE
+            : ($status >= 500 ? HubspotErroApi::INCERTO
+            : ($status === 409 ? HubspotErroApi::CONFLITO : HubspotErroApi::PERMANENTE));
+
+        throw new HubspotErroApi(
+            "[Renovacao] criarPropriedadeDeDeal({$nome}): HubSpot {$status}: " . $this->corpoResumido($res),
+            $tipo, $status, $status === 429 ? $this->retryAfterDe($res) : null
+        );
+    }
+
+    /**
+     * PUT v4 /objects/deals/{dealId}/associations/default/{companies|contacts}/{toId}
+     * — associação padrão, idempotente (por isso usa o retry de leitura).
+     *
+     * @throws HubspotErroApi
+     */
+    public function associarDealPadrao(string $dealId, string $tipoDestino, string $destinoId): void
+    {
+        if (! in_array($tipoDestino, ['companies', 'contacts'], true)) {
+            throw new \InvalidArgumentException("[Renovacao] tipoDestino inválido: {$tipoDestino}");
+        }
+
+        $res = $this->leitura('put', "/crm/v4/objects/deals/{$dealId}/associations/default/{$tipoDestino}/{$destinoId}");
+        if ($res->status() === 404) {
+            throw new HubspotErroApi(
+                "[Renovacao] associarDealPadrao: deal {$dealId} ou destino {$destinoId} não encontrado",
+                HubspotErroApi::PERMANENTE, 404
+            );
+        }
     }
 }
