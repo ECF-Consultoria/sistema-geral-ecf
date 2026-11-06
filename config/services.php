@@ -168,6 +168,29 @@ return [
         'stage_ganho_consultoria_id'   => env('HUBSPOT_STAGE_GANHO_CONSULTORIA_ID', 'closedwon'),
         'stage_perdido_consultoria_id' => env('HUBSPOT_STAGE_PERDIDO_CONSULTORIA_ID', 'closedlost'),
         'avancar_deal_ativo'           => (bool) env('HUBSPOT_AVANCAR_DEAL_ATIVO', true),
+        'portal_id'                    => env('HUBSPOT_PORTAL_ID'),
+        // Fase 202 — renovação contratual. IDs do pipeline "Renovações contrato"
+        // MEDIDOS em 06/11/2026 via GET /crm/v3/pipelines/deals. Se o Comercial
+        // renomear/criar colunas, medir de novo (renovacao:hubspot-preparar) e
+        // ajustar o .env (config:cache + queue:restart, nunca cache:clear).
+        'renovacao' => [
+            'pipeline_id'                  => env('HUBSPOT_RENOVACAO_PIPELINE_ID', '958410144'),
+            'stage_inicial_id'             => env('HUBSPOT_RENOVACAO_STAGE_INICIAL_ID', '1480135340'),
+            'stage_negociando_id'          => env('HUBSPOT_RENOVACAO_STAGE_NEGOCIANDO_ID', '1480135342'),
+            'stage_fechado_id'             => env('HUBSPOT_RENOVACAO_STAGE_FECHADO_ID', '1480135341'),
+            // Não existe etapa "perdido" nesse pipeline hoje.
+            'stages_perdido_ids'           => array_values(array_filter(array_map('trim', explode(',', (string) env('HUBSPOT_RENOVACAO_STAGES_PERDIDO_IDS', ''))))),
+            'propriedade_chave'            => env('HUBSPOT_RENOVACAO_PROPRIEDADE_CHAVE', 'ecf_renovacao_chave'),
+            'propriedade_negocio_original' => env('HUBSPOT_RENOVACAO_PROPRIEDADE_ORIGINAL', 'ecf_negocio_original_id'),
+            // Distingue ambientes/contas na chave de correlação.
+            'prefixo_correlacao'           => env('HUBSPOT_RENOVACAO_PREFIXO', 'ecf-' . env('APP_ENV', 'production')),
+            // Pipelines de origem autorizados a ter negócio movido: nasce VAZIA.
+            'origens_autorizadas'          => array_values(array_filter(array_map('trim', explode(',', (string) env('HUBSPOT_RENOVACAO_ORIGENS_AUTORIZADAS', ''))))),
+            'timeout_segundos'             => (int) env('HUBSPOT_RENOVACAO_TIMEOUT', 20),
+            'tentativas_leitura'           => (int) env('HUBSPOT_RENOVACAO_TENTATIVAS_LEITURA', 3),
+            'janela_incerto_minutos'       => (int) env('HUBSPOT_RENOVACAO_JANELA_INCERTO_MIN', 60),
+            'max_tentativas_criacao'       => (int) env('HUBSPOT_RENOVACAO_MAX_TENTATIVAS_CRIACAO', 3),
+        ],
         'props' => [
             // Phase 111 Plan 111-01 (HUB-API-01) — deal/company/contact ganham
             // props ampliadas do handoff Comercial v20.0 (só ADICIONA chaves;
