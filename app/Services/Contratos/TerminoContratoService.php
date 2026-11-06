@@ -63,7 +63,18 @@ class TerminoContratoService
                 $antes = $cs->data_vencimento?->toDateString();
                 $dataHubspot = $this->dataHubspot($cs);
 
-                if ($antes !== null) {
+                if ($antes !== null
+                    && $cs->data_vencimento_origem === ContratoServico::ORIGEM_TERMINO_HUBSPOT
+                    && $dataHubspot !== null
+                    && $dataHubspot !== $antes) {
+                    // Data de origem HubSpot que não bate com o HubSpot: foi gravada pela
+                    // leitura antiga do epoch em ms (término em 1796 — 3 linhas em produção
+                    // em 06/11/2026). Só regrava o que o próprio sistema gravou como hubspot;
+                    // `manual`, `calculada` e `renovacao` nunca passam por aqui.
+                    $acao   = 'corrigir_hubspot';
+                    $depois = $dataHubspot;
+                    $origem = ContratoServico::ORIGEM_TERMINO_HUBSPOT;
+                } elseif ($antes !== null) {
                     $acao   = $cs->data_vencimento_origem === null ? 'marcar_manual' : 'manter';
                     $depois = $antes;
                     $origem = $cs->data_vencimento_origem ?? ContratoServico::ORIGEM_TERMINO_MANUAL;
@@ -170,11 +181,19 @@ class TerminoContratoService
     {
         $valor = $cs->hubspot_snapshot['line_item']['hs_recurring_billing_end_date'] ?? null;
 
-        if (! is_string($valor) || trim($valor) === '') {
+        if ((! is_string($valor) && ! is_int($valor)) || trim((string) $valor) === '') {
             return null;
         }
 
         try {
+            // O HubSpot devolve propriedade do tipo data como epoch em MILISSEGUNDOS,
+            // à meia-noite UTC (medido em produção em 06/11/2026: '1796256000000' =
+            // 03/12/2026, início 03/11 + 1 mês). `Carbon::parse()` desse número dava o ano de 1796 — por isso
+            // número é lido como ms e em UTC (em BRT a meia-noite UTC cairia na véspera).
+            if (is_numeric($valor)) {
+                return Carbon::createFromTimestampMs((int) $valor, 'UTC')->toDateString();
+            }
+
             return Carbon::parse($valor)->toDateString();
         } catch (\Throwable) {
             return null;

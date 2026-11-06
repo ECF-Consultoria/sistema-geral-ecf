@@ -99,6 +99,46 @@ class TerminoContratoTest extends TestCase
         $this->assertSame('hubspot', $fresh->data_vencimento_origem);
     }
 
+    public function test_data_do_hubspot_em_milissegundos_e_lida_como_epoch_utc(): void
+    {
+        // Forma REAL da API (produção 06/11/2026): epoch em ms, meia-noite UTC.
+        // Antes do conserto isto virava término em 1796.
+        $c  = $this->empresa();
+        $cs = $this->contrato($c, $this->servico('Gestao'), [
+            'hubspot_billing_period' => 'P1M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_end_date' => '1796256000000']],
+        ]);
+
+        $this->preencher($c);
+
+        $fresh = $cs->fresh();
+        $this->assertSame('2026-12-03', $fresh->data_vencimento->toDateString());
+        $this->assertSame('hubspot', $fresh->data_vencimento_origem);
+    }
+
+    public function test_data_hubspot_gravada_errada_e_corrigida_e_manual_nunca(): void
+    {
+        $c = $this->empresa();
+        $s = $this->servico('Gestao');
+        $snapshot = ['line_item' => ['hs_recurring_billing_end_date' => '1796256000000']];
+
+        $errada = $this->contrato($c, $s, ['hubspot_billing_period' => 'P1M', 'hubspot_snapshot' => $snapshot]);
+        $errada->gravarTermino('1796-09-12', 'hubspot');
+
+        $manual = $this->contrato($c, $this->servico('Outro'), ['hubspot_billing_period' => 'P1M', 'hubspot_snapshot' => $snapshot]);
+        $manual->gravarTermino('2030-01-01', 'manual');
+
+        $this->preencher($c);
+
+        $this->assertSame('2026-12-03', $errada->fresh()->data_vencimento->toDateString());
+        $this->assertSame('hubspot', $errada->fresh()->data_vencimento_origem);
+        $this->assertSame('2030-01-01', $manual->fresh()->data_vencimento->toDateString());
+
+        // Idempotente: rodar de novo não muda nada.
+        $this->preencher($c);
+        $this->assertSame('2026-12-03', $errada->fresh()->data_vencimento->toDateString());
+    }
+
     public function test_escalonado_soma_as_fases_do_mesmo_servico(): void
     {
         $c = $this->empresa();

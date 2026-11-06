@@ -50,6 +50,7 @@ class CalcularTerminoContratos extends Command
         $this->line('  manter: '.$conta('manter'));
         $this->line('  marcar_manual: '.$conta('marcar_manual'));
         $this->line('  gravar_hubspot: '.$conta('gravar_hubspot'));
+        $this->line('  corrigir_hubspot: '.$conta('corrigir_hubspot'));
         $this->line('  gravar_calculada: '.$conta('gravar_calculada'));
         $this->line('  com data de contratação futura: '.$linhas->where('data_contratacao_futura', true)->count());
         $this->line('  com início vindo de assinatura: '.$linhas->where('inicio_fonte', 'assinatura')->count());
