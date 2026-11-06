@@ -3,13 +3,17 @@
 namespace Tests\Feature\Polos;
 
 use App\Http\Controllers\PolosController;
+use App\Http\Controllers\PolosPpaController;
 use App\Models\Configuracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PoloAdsBonificacao;
+use App\Models\PoloAdsStatus;
 use App\Models\PolosAgendaRevisao;
 use App\Models\PolosComentario;
 use App\Models\PolosRevisao;
+use App\Models\Ppa;
+use App\Models\PpaTask;
 use App\Models\User;
 use App\Services\Polos\FilaRevisaoPolos;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -478,5 +482,111 @@ class FilaRevisaoQuinzenalTest extends TestCase
         $this->assertSame('Jhonatan', $linhas[$e->cust_id]['responsavel']);
         $this->assertSame($this->jhonatan->id, $linhas[$e->cust_id]['responsavel_id']);
         $this->assertNull($linhas['1']['responsavel']);
+    }
+
+    // ─── TKT-0033: campanha, publicidade e PPA no cartão ────────────────────
+
+    public function test_cartao_traz_a_campanha_no_formato_do_faturamento_polos(): void
+    {
+        $lida     = $this->empresa('Lida pela Adman', $this->jhonatan);
+        $semCamp  = $this->empresa('Sem campanha', $this->jhonatan);
+        $manual   = $this->empresa('Marcada à mão', $this->jhonatan, ['ads_desligado' => true]);
+        $nada     = $this->empresa('Não verificada', $this->jhonatan);
+        $velha    = $this->empresa('Leitura velha', $this->jhonatan, ['ads_desligado' => false]);
+        PoloAdsStatus::create(['cust_id' => $lida->cust_id, 'campanhas_ativas' => 2, 'campanhas_total' => 3, 'verificado_em' => now()->subHour()]);
+        PoloAdsStatus::create(['cust_id' => $semCamp->cust_id, 'campanhas_ativas' => 0, 'campanhas_total' => 0, 'verificado_em' => now()->subHour()]);
+        // Leitura de mais de 72 h não vale: fica a marcação manual, como no Faturamento.
+        PoloAdsStatus::create(['cust_id' => $velha->cust_id, 'campanhas_ativas' => 0, 'campanhas_total' => 4, 'verificado_em' => now()->subDays(4)]);
+
+        $cards = collect($this->fila()->montar($this->jhonatan->id, now())['pendentes'])->keyBy('nome');
+
+        $this->assertSame('ativa', $cards['Lida pela Adman']['campanha']);
+        $this->assertSame(['ativas' => 2, 'total' => 3, 'verificado_em' => '28/10 09:00'], $cards['Lida pela Adman']['campanha_auto']);
+        $this->assertSame('sem_campanha', $cards['Sem campanha']['campanha']);
+        $this->assertSame(0, $cards['Sem campanha']['campanha_auto']['total']);
+        $this->assertSame('desligada', $cards['Marcada à mão']['campanha']);
+        $this->assertNull($cards['Marcada à mão']['campanha_auto']);
+        $this->assertNull($cards['Não verificada']['campanha']);
+        $this->assertSame('ativa', $cards['Leitura velha']['campanha']);
+        $this->assertNull($cards['Leitura velha']['campanha_auto']);
+
+        // Com a linha do Faturamento Polos, valem a situação, o detalhe e o gasto de ADS dela.
+        $fat = [$nada->id => [
+            'faturamento' => 900.0, 'meta' => 1000.0, 'pct' => 90.0, 'ads' => 412.5, 'polo' => 'Arapongas',
+            'ads_campanha' => 'desligada', 'ads_auto' => ['ativas' => 0, 'total' => 2, 'verificado_em' => '28/10 08:00'],
+        ]];
+        $card = collect($this->fila()->montar($this->jhonatan->id, now(), $fat)['pendentes'])->firstWhere('nome', 'Não verificada');
+        $this->assertSame('desligada', $card['campanha']);
+        $this->assertSame(['ativas' => 0, 'total' => 2, 'verificado_em' => '28/10 08:00'], $card['campanha_auto']);
+        $this->assertSame(412.5, $card['investimento'], 'Consumo de publicidade = gasto de ADS do mês da linha do Faturamento.');
+    }
+
+    public function test_cartao_traz_os_ppas_da_empresa_na_regra_da_gaveta_do_painel(): void
+    {
+        $admin   = User::factory()->create(['role' => 'admin', 'name' => 'Débora']);
+        $company = \App\Models\Company::factory()->create();
+        $comPpa  = $this->empresa('Com PPA', $this->jhonatan, ['company_id' => $company->id]);
+        $semPpa  = $this->empresa('Sem PPA', $this->jhonatan);
+        $outra   = $this->empresa('De outra carteira', $this->elvis);
+
+        $plano = Ppa::create([
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $comPpa->id, 'mentor_id' => $admin->id,
+            'title'  => 'Plano de ADS', 'status' => 'sent', 'due_date' => now()->addDays(3)->toDateString(),
+        ]);
+        foreach (['done', 'doing', 'todo', 'todo'] as $i => $status) {
+            PpaTask::create(['ppa_id' => $plano->id, 'title' => "T{$i}", 'status' => $status, 'order' => $i]);
+        }
+        // PPA de carteira da Company vinculada também é da empresa (mesma regra da gaveta).
+        $carteira = Ppa::create([
+            'escopo' => Ppa::ESCOPO_GERAL, 'company_id' => $company->id, 'mentor_id' => $admin->id,
+            'title'  => 'Plano da carteira', 'status' => 'completed',
+        ]);
+        Ppa::create([
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $outra->id, 'mentor_id' => $admin->id,
+            'title'  => 'Plano de outra empresa', 'status' => 'draft',
+        ]);
+
+        $cards = collect($this->fila()->montar($this->jhonatan->id, now(), [], true)['pendentes'])->keyBy('nome');
+
+        $this->assertSame([], $cards['Sem PPA']['ppas']);
+        $ppas = $cards['Com PPA']['ppas'];
+        $this->assertSame([$plano->id, $carteira->id], array_column($ppas, 'id'), 'Em andamento antes do concluído; o de outra empresa não entra.');
+        $this->assertSame(PolosPpaController::resumo(
+            Ppa::with('mentor:id,name')->comContagemDeTarefas()->comUltimaAtividade()->find($plano->id)
+        ), $ppas[0], 'Mesmo formato da gaveta do Painel Polos.');
+        $this->assertSame([4, 1, 1, 3], [$ppas[0]['total'], $ppas[0]['feitas'], $ppas[0]['fazendo'], $ppas[0]['prazo_dias']]);
+        $this->assertSame(route('mlb.polos-ppa.kanban', $plano), $ppas[0]['url']);
+        $this->assertSame(route('ppa.kanban', $carteira), $ppas[1]['url']);
+
+        // Sem pedir o PPA, o cartão não traz a linha.
+        $this->assertNull($this->fila()->montar($this->jhonatan->id, now())['pendentes'][0]['ppas']);
+    }
+
+    public function test_ppa_na_fila_so_para_quem_pode_ver_o_ppa_polos(): void
+    {
+        $e = $this->empresa('Com PPA', $this->jhonatan);
+        Ppa::create(['escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $e->id, 'mentor_id' => $this->jhonatan->id,
+            'title' => 'Plano', 'status' => 'draft']);
+
+        // Só mlb.faturamento_polos abre a fila, mas não dá acesso aos planos.
+        $this->actingAs($this->jhonatan)
+            ->get(route('mlb.polos-painel.fila'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $p) => $p->where('fila.pendentes.0.nome', 'Com PPA')->where('fila.pendentes.0.ppas', null));
+
+        DB::table('setor_permissoes')->insert([
+            'setor_id'   => DB::table('user_setores')->where('user_id', $this->jhonatan->id)->value('setor_id'),
+            'permission_key' => 'mlb.projetos', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($this->jhonatan->fresh())
+            ->get(route('mlb.polos-painel.fila'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $p) => $p->has('fila.pendentes.0.ppas', 1)->where('fila.pendentes.0.ppas.0.titulo', 'Plano'));
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin)
+            ->get(route('mlb.polos-painel.fila', ['analista' => $this->jhonatan->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $p) => $p->has('fila.pendentes.0.ppas', 1));
     }
 }

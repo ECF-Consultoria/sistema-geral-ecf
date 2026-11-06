@@ -36,7 +36,8 @@ class PolosFilaController extends Controller
             'analistas'        => $this->analistasVisiveis($user, $analistas),
             'analistaId'       => $analistaId,
             'podeTrocar'       => $user->isAdmin(),
-            'fila'             => $this->fila->montar($analistaId, now(), $faturamento),
+            // PPA da empresa no cartão (TKT-0033): mesmo gate do PPA Polos (permission:mlb.projetos).
+            'fila'             => $this->fila->montar($analistaId, now(), $faturamento, $user->hasPermission('mlb.projetos')),
             'avisoFaturamento' => $aviso,
         ]);
     }

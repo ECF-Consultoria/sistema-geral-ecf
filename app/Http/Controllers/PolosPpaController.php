@@ -194,30 +194,40 @@ class PolosPpaController extends Controller
             ->comUltimaAtividade()
             ->ordenadoPorAtencao()
             ->get()
-            ->map(fn (Ppa $p) => [
-                'id'          => $p->id,
-                'titulo'      => $p->title,
-                'status'      => $p->status,
-                'escopo'      => $p->escopo === Ppa::ESCOPO_POLOS ? Ppa::ESCOPO_POLOS : Ppa::ESCOPO_GERAL,
-                'total'       => (int) $p->tasks_count,
-                'feitas'      => (int) $p->tasks_done_count,
-                'fazendo'     => (int) $p->tasks_doing_count,
-                'prazo'       => $p->due_date?->format('d/m/Y'),
-                // Calculado aqui pelo mesmo motivo de `PortalPpaService::visao()`:
-                // no navegador, o fuso de quem olha mudaria o dia do atraso.
-                'prazo_dias'  => $p->diasAteOPrazo(),
-                'responsavel' => $p->mentor?->name,
-                'criado_em'   => $p->created_at?->format('d/m/Y'),
-                'atualizado_em' => $p->atualizadoEm()?->format('d/m/Y'),
-                // Cada escopo abre no seu quadro: o de Polos exige o escopo certo
-                // (`garantirEscopo`) e daria 404 para um PPA de carteira.
-                'url'         => $p->escopo === Ppa::ESCOPO_POLOS
-                    ? route('mlb.polos-ppa.kanban', $p)
-                    : route('ppa.kanban', $p),
-            ])
+            ->map(fn (Ppa $p) => self::resumo($p))
             ->values();
 
         return response()->json(['ppas' => $ppas]);
+    }
+
+    /**
+     * Um PPA no formato da gaveta. Também é o da fila de revisão (TKT-0033), para as duas
+     * telas não divergirem. Espera o PPA carregado com `mentor`, `comContagemDeTarefas()` e
+     * `comUltimaAtividade()`.
+     */
+    public static function resumo(Ppa $p): array
+    {
+        return [
+            'id'          => $p->id,
+            'titulo'      => $p->title,
+            'status'      => $p->status,
+            'escopo'      => $p->escopo === Ppa::ESCOPO_POLOS ? Ppa::ESCOPO_POLOS : Ppa::ESCOPO_GERAL,
+            'total'       => (int) $p->tasks_count,
+            'feitas'      => (int) $p->tasks_done_count,
+            'fazendo'     => (int) $p->tasks_doing_count,
+            'prazo'       => $p->due_date?->format('d/m/Y'),
+            // Calculado aqui pelo mesmo motivo de `PortalPpaService::visao()`:
+            // no navegador, o fuso de quem olha mudaria o dia do atraso.
+            'prazo_dias'  => $p->diasAteOPrazo(),
+            'responsavel' => $p->mentor?->name,
+            'criado_em'   => $p->created_at?->format('d/m/Y'),
+            'atualizado_em' => $p->atualizadoEm()?->format('d/m/Y'),
+            // Cada escopo abre no seu quadro: o de Polos exige o escopo certo
+            // (`garantirEscopo`) e daria 404 para um PPA de carteira.
+            'url'         => $p->escopo === Ppa::ESCOPO_POLOS
+                ? route('mlb.polos-ppa.kanban', $p)
+                : route('ppa.kanban', $p),
+        ];
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 namespace App\Services\Polos;
 
+use App\Http\Controllers\PolosPpaController;
 use App\Models\Configuracao;
 use App\Models\MlbEmpresa;
 use App\Models\PoloAdsBonificacao;
@@ -9,6 +10,7 @@ use App\Models\PoloAdsStatus;
 use App\Models\PolosAgendaRevisao;
 use App\Models\PolosComentario;
 use App\Models\PolosRevisao;
+use App\Models\Ppa;
 use App\Models\User;
 use App\Support\CustId;
 use Carbon\CarbonImmutable;
@@ -38,6 +40,8 @@ use Illuminate\Support\Str;
  *    some da lista e a empresa aparece "sem bônus".
  *  - Sinais que dependem de dado que o sistema não tem (ACOS, vendas por Ads, anúncios
  *    ativos, promoções) ficaram de fora em 27/10 — exigiriam leitura nova da Adman.
+ *  - **PPA no cartão (TKT-0033)** só para quem pode ver o PPA Polos (admin ou mlb.projetos):
+ *    a fila abre com mlb.faturamento_polos, que não dá acesso aos planos.
  */
 class FilaRevisaoPolos
 {
@@ -223,13 +227,15 @@ class FilaRevisaoPolos
      *         corrente por mlb_empresa_id (as MESMAS de /polos/empresas); [] = sem dado.
      * @return array{hoje: array, resumo: array, pendentes: array, feitas: array, em_dia: array}
      */
-    public function montar(int $analistaId, CarbonInterface $hoje, array $faturamento = []): array
+    public function montar(int $analistaId, CarbonInterface $hoje, array $faturamento = [], bool $comPpa = false): array
     {
         $hoje     = self::data($hoje->toDateString());
         $inicio   = self::cicloInicio();
         $diaHoje  = self::diaDoCiclo($hoje, $inicio);
         $empresas = $this->carteira($analistaId);
         $cards    = $this->cards($empresas, $hoje, $faturamento);
+        // null = quem olha não pode ver o PPA Polos (a tela esconde a linha); [] = sem plano.
+        $ppas     = $comPpa ? self::ppasPorEmpresa($empresas) : null;
 
         $ids      = $empresas->pluck('id')->all();
         $agenda   = PolosAgendaRevisao::whereIn('mlb_empresa_id', $ids)->pluck('dia_ciclo', 'mlb_empresa_id');
@@ -253,6 +259,7 @@ class FilaRevisaoPolos
             $dia  = isset($agenda[$e->id]) ? (int) $agenda[$e->id] : null;
             $card['dia_ciclo'] = $dia;
             $card['dia_label'] = $dia === null ? null : self::DIAS[$dia];
+            $card['ppas']      = $ppas === null ? null : ($ppas[$e->id] ?? []);
 
             $revisao = $deHoje[$e->id] ?? null;
             if ($revisao !== null) {
@@ -419,8 +426,16 @@ class FilaRevisaoPolos
 
             $b = $cust !== '' ? self::bonusDoMes($bonus[$cust] ?? null, $hoje) : null;
 
+            $leitura  = $leiturasAd[$cust] ?? null;
             $campanha = $fat['ads_campanha']
-                ?? PoloAdsStatus::situacaoDaEmpresa($leiturasAd[$cust] ?? null, $e->ads_desligado === null ? null : (bool) $e->ads_desligado);
+                ?? PoloAdsStatus::situacaoDaEmpresa($leitura, $e->ads_desligado === null ? null : (bool) $e->ads_desligado);
+            // Detalhe do selo Ligado/Desligado, no formato da coluna Sinais do Faturamento Polos
+            // (PolosController::comAdsAutomatico). null = sem leitura da Adman: vale a marcação manual.
+            $campanhaAuto = $fat['ads_auto'] ?? ($leitura ? [
+                'ativas'        => $leitura->campanhas_ativas,
+                'total'         => $leitura->campanhas_total,
+                'verificado_em' => $leitura->verificado_em?->format('d/m H:i'),
+            ] : null);
 
             $coms    = $cust !== '' ? ($comentarios[$cust] ?? collect()) : collect();
             $ultimo  = $coms->first();
@@ -440,6 +455,7 @@ class FilaRevisaoPolos
                 'mes_nome'    => $mesNome,
                 'bonus'       => $b,
                 'campanha'    => $campanha,
+                'campanha_auto' => $campanhaAuto,
                 'conta_nao_vinculada' => $vinculo->status($e->fase, $e->cust_id) === VinculoAdmanPolos::NAO_VINCULADO,
                 'ultimo_comentario' => $ultimo ? [
                     'texto'  => $ultimo->texto,
@@ -462,6 +478,43 @@ class FilaRevisaoPolos
         }
 
         return $cards;
+    }
+
+    /**
+     * Os PPAs de cada empresa (TKT-0033), na mesma regra e no mesmo formato da gaveta do
+     * Painel Polos (PolosPpaController::daEmpresa): o PPA Polos pela empresa e o de carteira
+     * pela Company vinculada, rascunho incluído, na ordem de atenção da lista. Uma consulta
+     * só para a carteira inteira.
+     *
+     * @param  Collection<int, MlbEmpresa>  $empresas
+     * @return array<int, array<int, array<string,mixed>>>  por mlb_empresa_id
+     */
+    public static function ppasPorEmpresa(Collection $empresas): array
+    {
+        $ids = $empresas->pluck('id')->all();
+        if ($ids === []) {
+            return [];
+        }
+        $companies = $empresas->pluck('company_id')->filter()->unique()->values()->all();
+
+        $ppas = Ppa::with('mentor:id,name')
+            ->where(fn ($q) => $q->whereIn('mlb_empresa_id', $ids)->orWhereIn('company_id', $companies))
+            ->comContagemDeTarefas()
+            ->comUltimaAtividade()
+            ->ordenadoPorAtencao()
+            ->get();
+
+        $porEmpresa = [];
+        foreach ($empresas as $e) {
+            $porEmpresa[$e->id] = $ppas
+                ->filter(fn (Ppa $p) => (int) $p->mlb_empresa_id === $e->id
+                    || ($e->company_id && (int) $p->company_id === (int) $e->company_id))
+                ->map(fn (Ppa $p) => PolosPpaController::resumo($p))
+                ->values()
+                ->all();
+        }
+
+        return $porEmpresa;
     }
 
     /**

@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeft, CalendarDays, Check, AlertTriangle, Info, MessageSquareText, CalendarClock, Search, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, AlertTriangle, Info, MessageSquareText, CalendarClock, Search, X,
+         Megaphone, MegaphoneOff, ClipboardList } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import { ORDENS, FILTRO_BONUS, FILTRO_ATENCAO, FILTRO_CAMPANHA, FILTROS_PADRAO, aplicarFiltros } from '@/lib/polosFila';
+import { PpaCompacto } from '../components/PpasDaEmpresa';
 
 // Selo da situação na fila (TKT-0027).
 const SITUACAO = {
@@ -19,61 +22,6 @@ const VISOES = [
     { key: 'feitas', label: 'Feitas hoje' },
     { key: 'todas',  label: 'Todas da carteira' },
 ];
-
-// [rótulo, valor da empresa, direção]. Sem valor (ex.: sem bônus) vai sempre para o fim.
-const ORDENS = {
-    prioridade:        ['Prioridade da fila', null, 0],
-    bonus_mais:        ['Bônus: mais usado primeiro', (e) => e.bonus?.pct_usado, -1],
-    bonus_menos:       ['Bônus: menos usado primeiro', (e) => e.bonus?.pct_usado, 1],
-    meta_menor:        ['Menor % da meta', (e) => e.pct, 1],
-    faturamento_maior: ['Maior faturamento', (e) => e.faturamento, -1],
-};
-
-const FILTRO_BONUS = {
-    todos:  ['Bônus: todos', () => true],
-    com:    ['Com bônus', (e) => !!e.bonus],
-    parado: ['Bônus parado (usou < 20%)', (e) => e.bonus?.ritmo?.tipo === 'parado'],
-    sem:    ['Sem bônus', (e) => !e.bonus],
-};
-
-const temSinal = (e, chave) => (e.sinais ?? []).some((s) => s.chave === chave);
-const FILTRO_ATENCAO = {
-    todos:              ['Atenção: todas', () => true],
-    atrasada:           ['Atrasadas', (e) => e.situacao === 'atrasada'],
-    desatualizado:      ['Comentário desatualizado', (e) => e.desatualizado],
-    sem_comentario_mes: ['Sem comentário no mês', (e) => !e.ultimo_comentario?.do_mes],
-    campanha_desligada: ['Campanha desligada', (e) => temSinal(e, 'campanha_desligada')],
-    places:             ['Places pendente', (e) => temSinal(e, 'places')],
-    // "Ads sem acordo" fica só como chip no cartão, sem opção de filtro (pedido de 27/10).
-};
-
-const FILTROS_PADRAO = { busca: '', ordem: 'prioridade', bonus: 'todos', atencao: 'todos', fase: 'todas', polo: 'todos' };
-
-const semAcento = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-
-function aplicarFiltros(lista, f) {
-    const q = semAcento(f.busca.trim());
-    const filtrada = lista.filter((e) => (
-        (!q || semAcento(`${e.nome} ${e.cust_id ?? ''} ${e.polo ?? ''}`).includes(q))
-        && (f.fase === 'todas' || e.fase === f.fase)
-        && (f.polo === 'todos' || (e.polo ?? '') === f.polo)
-        && FILTRO_BONUS[f.bonus][1](e)
-        && FILTRO_ATENCAO[f.atencao][1](e)
-    ));
-
-    const [, valor, dir] = ORDENS[f.ordem];
-    if (!valor) return filtrada; // prioridade: a ordem que o servidor montou
-
-    return [...filtrada].sort((a, b) => {
-        const va = valor(a);
-        const vb = valor(b);
-        const semA = va === null || va === undefined;
-        const semB = vb === null || vb === undefined;
-        if (semA !== semB) return semA ? 1 : -1;
-        if (!semA && va !== vb) return (va - vb) * dir;
-        return a.nome.localeCompare(b.nome);
-    });
-}
 
 // Inertia: os filtros sobrevivem ao marcar/desmarcar (a página recarrega as props, não o estado).
 const OPCOES_GRAVAR = { preserveScroll: true, preserveState: true };
@@ -101,6 +49,9 @@ const corMeta = (pct) => (pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-ecf-ye
  * Visões e filtros (pedido de 27/10): "Todas da carteira" mostra também quem está em dia
  * (próxima revisão) e quem já foi feita; ordenar por bônus mais/menos usado; filtros de
  * bônus, pontos de atenção, fase, polo e busca — tudo no cliente, sobre a carteira já carregada.
+ *
+ * TKT-0033: o cartão mostra a campanha (o selo Ligado/Desligado do Faturamento Polos), o gasto
+ * de publicidade do mês e os PPAs da empresa; ordena por consumo de publicidade e filtra por campanha.
  */
 export default function FilaIndex({ analistas = [], analistaId = null, podeTrocar = false, fila = null, avisoFaturamento = null }) {
     const resumo    = fila?.resumo ?? {};
@@ -219,6 +170,8 @@ export default function FilaIndex({ analistas = [], analistaId = null, podeTroca
                                      opcoes={Object.entries(FILTRO_BONUS).map(([k, [rotulo]]) => [k, rotulo])} />
                             <Escolha valor={filtros.atencao} onChange={(v) => mudar('atencao', v)} titulo="Pontos de atenção"
                                      opcoes={Object.entries(FILTRO_ATENCAO).map(([k, [rotulo]]) => [k, rotulo])} />
+                            <Escolha valor={filtros.campanha} onChange={(v) => mudar('campanha', v)} titulo="Campanha"
+                                     opcoes={Object.entries(FILTRO_CAMPANHA).map(([k, [rotulo]]) => [k, rotulo])} />
                             <Escolha valor={filtros.fase} onChange={(v) => mudar('fase', v)} titulo="Fase"
                                      opcoes={[['todas', 'Fase: todas'], ...['M1', 'M2', 'M3', 'M4'].map((f) => [f, f])]} />
                             {polos.length > 1 && (
@@ -374,7 +327,44 @@ function Bonus({ e }) {
                 <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(b.pct_usado, 100)}%` }} />
             </div>
             <p className={cn('text-[11px] mt-1', RITMO[b.ritmo?.tipo] ?? 'text-white/50')}>{b.ritmo?.texto}</p>
+            {e.investimento !== null && e.investimento !== undefined && (
+                <p className="text-white/40 text-[11px] mt-0.5" title="Gasto de ADS do mês, o mesmo da coluna ADS do Faturamento Polos">
+                    Publicidade em {e.mes_nome}: {formatCurrency(e.investimento)}
+                </p>
+            )}
         </Bloco>
+    );
+}
+
+/**
+ * Situação da campanha (TKT-0033), o mesmo selo da coluna Sinais do Faturamento Polos: com
+ * leitura da Adman, "Ligado/Desligado · ativas/total"; sem ela, a marcação manual feita lá;
+ * sem nenhuma das duas, "não verificada".
+ */
+function SeloCampanha({ e }) {
+    if (!e.campanha) {
+        return (
+            <span title="A Adman não enxerga a conta e ninguém marcou Ligado/Desligado no Faturamento Polos"
+                  className="inline-flex items-center gap-1 rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-semibold text-white/45">
+                <Megaphone size={12} /> Campanha não verificada
+            </span>
+        );
+    }
+
+    const auto   = e.campanha_auto;
+    const ligado = e.campanha === 'ativa';
+    const Icone  = ligado ? Megaphone : MegaphoneOff;
+    const titulo = auto
+        ? `Automático pela Adman: ${auto.ativas} de ${auto.total} campanha(s) ativa(s) · verificado em ${auto.verificado_em}`
+        : `Ads ${ligado ? 'ligado' : 'desligado'}: marcado no Faturamento Polos (a Adman não enxerga esta conta)`;
+
+    return (
+        <span title={titulo}
+              className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-semibold',
+                  ligado ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400')}>
+            <Icone size={12} /> {ligado ? 'Ligado' : 'Desligado'}
+            {auto && <span className="font-normal opacity-70">· {auto.total === 0 ? 'sem campanha' : `${auto.ativas}/${auto.total}`}</span>}
+        </span>
     );
 }
 
@@ -437,6 +427,7 @@ function CartaoEmpresa({ e }) {
                         <p className="text-white/45 text-xs truncate">
                             {[e.polo, e.fase, e.cust_id ? `Cust ${e.cust_id}` : 'sem Cust ID'].filter(Boolean).join(' · ')}
                         </p>
+                        <div className="mt-1"><SeloCampanha e={e} /></div>
                     </div>
                     <div className="ml-auto md:hidden"><Selo e={e} /></div>
                 </div>
@@ -450,6 +441,18 @@ function CartaoEmpresa({ e }) {
                     {e.sinais.map((s) => (
                         <span key={s.chave} className={cn('rounded-md border px-2 py-0.5 text-[11px] font-medium', CHIP[s.cor])}>{s.texto}</span>
                     ))}
+                </div>
+            )}
+
+            {/* PPAs da empresa (TKT-0033). null = quem olha não tem acesso ao PPA Polos. */}
+            {e.ppas && (
+                <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3 md:pl-[3.25rem]">
+                    <span className="mr-0.5 inline-flex items-center gap-1 text-white/35 text-[10px] font-semibold uppercase tracking-wider">
+                        <ClipboardList size={11} /> PPA
+                    </span>
+                    {e.ppas.length === 0
+                        ? <span className="text-white/35 text-[11px]">Nenhum PPA para esta empresa</span>
+                        : e.ppas.map((p) => <PpaCompacto key={p.id} p={p} />)}
                 </div>
             )}
 

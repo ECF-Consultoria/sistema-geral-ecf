@@ -64,6 +64,31 @@ export default function PpasDaEmpresa({ estado }) {
     );
 }
 
+/**
+ * Um PPA numa linha — para o cartão da fila de revisão (TKT-0033), onde o card da gaveta
+ * pesaria. Mesmos rótulos e selo de prazo; o resumo das tarefas fica no hover. Abre o
+ * quadro do plano em aba nova, como na gaveta.
+ */
+export function PpaCompacto({ p }) {
+    const st       = STATUS_PPA[p.status] ?? STATUS_PPA.draft;
+    const contagem = { total: p.total, feitas: p.feitas, fazendo: p.fazendo, aFazer: p.total - p.feitas - p.fazendo };
+    const selo     = seloPrazo(p.prazo_dias, { encerrado: p.status === 'completed' });
+    const titulo   = [p.titulo, resumoTarefas(contagem), p.prazo ? `Prazo ${p.prazo}` : 'Sem prazo', p.responsavel].filter(Boolean).join(' · ');
+
+    return (
+        <a href={p.url} target="_blank" rel="noopener noreferrer" title={`${titulo} — abrir o quadro do plano`}
+            className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md bg-white/[0.03] px-2 py-0.5 text-[11px] ring-1 ring-inset ring-white/[0.06] transition hover:bg-white/[0.06] hover:ring-ecf-yellow/25">
+            <span className="min-w-0 max-w-[16rem] truncate font-semibold text-white/80 group-hover:text-white">{p.titulo}</span>
+            <span className={cn('shrink-0 rounded-full px-1.5 text-[10px] font-semibold', st.cls)}>{st.label}</span>
+            <span className="shrink-0 tabular-nums text-white/45">
+                {p.total > 0 ? `${percentual(contagem)}% · ${p.feitas}/${p.total}` : 'sem tarefas'}
+            </span>
+            {selo && <span className={cn('shrink-0 rounded px-1 font-semibold', SELO_TOM[selo.tom])}>{selo.texto}</span>}
+            <ExternalLink size={10} className="shrink-0 text-white/30 group-hover:text-ecf-yellow" />
+        </a>
+    );
+}
+
 function CardPpa({ p }) {
     const st        = STATUS_PPA[p.status] ?? STATUS_PPA.draft;
     const contagem  = { total: p.total, feitas: p.feitas, fazendo: p.fazendo, aFazer: p.total - p.feitas - p.fazendo };
