@@ -6,6 +6,7 @@ use App\Http\Controllers\CoordenacaoDistribuicaoController;
 use App\Http\Controllers\ChamadoController;
 use App\Http\Controllers\DevDemandaController;
 use App\Http\Controllers\ContratoAdminController;
+use App\Http\Controllers\ContratoRenovacaoController;
 use App\Http\Controllers\TabelasContratoController;
 use App\Http\Controllers\TabelaEmpresaContratoController;
 use App\Http\Controllers\ActivityLogController;
@@ -1990,6 +1991,12 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
     // (Fase 130). Ação disparada de dentro do detalhe da empresa.
     Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
+
+    // Fase 202 (REN-06) — renovação contratual: reprocessar, dispensar e ver o
+    // histórico. MESMO grupo de permissão (nunca role:admin). A tela só enfileira.
+    Route::post('/renovacao/{company}/{servico}/sincronizar', [ContratoRenovacaoController::class, 'sincronizar'])->name('renovacao.sincronizar');
+    Route::post('/renovacao/ciclo/{ciclo}/dispensar', [ContratoRenovacaoController::class, 'dispensar'])->name('renovacao.dispensar');
+    Route::get('/renovacao/{company}/{servico}/historico', [ContratoRenovacaoController::class, 'historico'])->name('renovacao.historico');
 
     // Plano 140-05 (TAB-08/TAB-09) — tela de conferência das tabelas de cobrança lidas do
     // Clicksign (140-01/02/03/04) e a confirmação auditada que grava

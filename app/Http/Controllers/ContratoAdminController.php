@@ -8,7 +8,9 @@ use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaSignatario;
 use App\Models\ContratoLiberacao;
+use App\Models\ContratoRenovacao;
 use App\Models\ContratoServico;
+use App\Models\HubspotEvento;
 use App\Models\EmpresaFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\User;
@@ -21,6 +23,10 @@ use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Clicksign\ContratoClicksignService;
 use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratoDadosMinimosService;
+use App\Services\Contratos\ContratoGrupos;
+use App\Services\Renovacao\RenovacaoConfig;
+use App\Services\Renovacao\RenovacaoJanela;
+use Carbon\Carbon;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
@@ -149,6 +155,33 @@ class ContratoAdminController extends Controller
         // SEM_CONTRATO) — a consolidação em si (`show()`, "Datas por
         // serviço") continua mostrando as fases separadas, que é onde a
         // pessoa preenche as datas de cada uma.
+        // Fase 202 (plano 06) — ciclos de renovação do universo numa única
+        // query (corrente = o de maior número), indexados por "empresa:serviço".
+        $contratoGrupos = app(ContratoGrupos::class);
+        $hoje = Carbon::today();
+        $ciclosPorPar = ContratoRenovacao::whereIn('company_id', $companies->pluck('id'))
+            ->orderByDesc('numero_ciclo')
+            ->get()
+            ->groupBy(fn (ContratoRenovacao $c) => $c->company_id.':'.$c->servico_id);
+
+        // Negócio original por empresa em UMA query (mesma regra do
+        // NegocioOriginalResolver: deal do último evento processado que criou
+        // a empresa; senão a coluna hubspot_deal_id).
+        $dealsDosEventos = HubspotEvento::whereIn('company_id_criada', $companies->pluck('id'))
+            ->where('status', 'processado')
+            ->whereNotNull('object_id')
+            ->orderByDesc('id')
+            ->get(['company_id_criada', 'object_id'])
+            ->unique('company_id_criada')
+            ->pluck('object_id', 'company_id_criada');
+        $negocioOriginalPorEmpresa = $companies->mapWithKeys(fn (Company $c) => [
+            $c->id => filled($dealsDosEventos[$c->id] ?? null)
+                ? (string) $dealsDosEventos[$c->id]
+                : (filled($c->hubspot_deal_id) ? (string) $c->hubspot_deal_id : null),
+        ]);
+        $portalId = config('services.hubspot.portal_id')
+            ?: HubspotEvento::whereNotNull('portal_id')->orderByDesc('id')->value('portal_id');
+
         $linhas = collect();
         foreach ($companies as $company) {
             // Plano 151-06 (D-12) — setor ECF da empresa, mesma derivação de
@@ -179,38 +212,17 @@ class ContratoAdminController extends Controller
             // `iniciarParaEmpresa()` usa para decidir se o dono está
             // "presente" (Shopee sozinho, sem o dono ativo, continua com
             // GRUPO PRÓPRIO — regressão que este passo não pode causar).
-            $porServicoOriginal = $company->contratosServico->groupBy('servico_id');
-            $servicoIdsAtivos = $company->contratosServico->pluck('servico_id')->unique();
+            // Fase 202 (plano 06) — agrupamento único em ContratoGrupos
+            // (extraído do antigo closure `$grupoDoServico`): mesma regra do
+            // quick 260901-gj7, uma só fonte para a tela e para a renovação.
+            $grupos = $contratoGrupos->agrupar($company->contratosServico);
 
-            $grupoDoServico = function (int $servicoId) use ($porServicoOriginal, $servicoIdsAtivos): int {
-                $servico = $porServicoOriginal[$servicoId]->first()->servico;
-                $donoId = optional($servico)->contrato_junto_com_servico_id;
+            foreach ($grupos as $servicoId => $membros) {
+                $servicoId = (int) $servicoId;
 
-                if ($donoId !== null && $servicoIdsAtivos->contains($donoId)) {
-                    return (int) $donoId;
-                }
-
-                return $servicoId;
-            };
-
-            $gruposPorServico = collect();
-            foreach ($porServicoOriginal->keys() as $servicoIdOriginal) {
-                $servicoIdOriginal = (int) $servicoIdOriginal;
-                $chaveGrupo = $grupoDoServico($servicoIdOriginal);
-
-                if (! $gruposPorServico->has($chaveGrupo)) {
-                    $gruposPorServico[$chaveGrupo] = collect();
-                }
-
-                $gruposPorServico[$chaveGrupo]->push($servicoIdOriginal);
-            }
-
-            foreach ($gruposPorServico as $servicoId => $membrosDoGrupo) {
-                // Representante do GRUPO: o serviço DONO (a chave do grupo é
-                // sempre um `servico_id` presente em `$porServicoOriginal` —
-                // ou o próprio serviço, sem combinação, ou o dono, que só
-                // vira chave quando ele mesmo está ativo na empresa).
-                $contratoServico = $porServicoOriginal[$servicoId]->first();
+                // Representante do GRUPO: o primeiro ContratoServico do
+                // serviço DONO (a chave do grupo é sempre um servico_id ativo).
+                $contratoServico = $membros->firstWhere('servico_id', $servicoId);
 
                 // Isenção (D-09) decidida pelo DONO do grupo — mesma
                 // disciplina de `iniciarParaEmpresa()`: serviço isento
@@ -218,7 +230,7 @@ class ContratoAdminController extends Controller
                 // ele nunca é dono de ninguém (não aparece como chave de
                 // grupo de outro serviço) e este `exigeContrato()` é sobre
                 // ELE MESMO no caso não combinado.
-                if (! $contratoServico->servico?->exigeContrato()) {
+                if (! $contratoGrupos->exigeContrato($membros, $servicoId)) {
                     continue;
                 }
 
@@ -228,8 +240,16 @@ class ContratoAdminController extends Controller
                 // combinado termina quando a última fase de qualquer um dos
                 // serviços que ele cobre termina. Todas nulas → null, o
                 // mesmo "Sem prazo" legítimo de sempre.
-                $todosItensDoGrupo = $membrosDoGrupo->flatMap(fn (int $sid) => $porServicoOriginal[$sid]);
-                $dataVencimentoGrupo = $todosItensDoGrupo->pluck('data_vencimento')->filter()->max();
+                $dataVencimentoGrupo = $membros->pluck('data_vencimento')->filter()->max();
+
+                // Fase 202 — dados de renovação desta linha (mesmos nos dois ramos).
+                $renovacao = $this->dadosDeRenovacao(
+                    $membros,
+                    $ciclosPorPar->get($company->id.':'.$servicoId, collect()),
+                    $negocioOriginalPorEmpresa[$company->id] ?? null,
+                    $portalId,
+                    $hoje,
+                );
 
                 $chave = $company->id.':'.$servicoId;
                 $contrato = $contratosPorPar->get($chave);
@@ -291,6 +311,7 @@ class ContratoAdminController extends Controller
                         // fases (Quick 260824-kbk), é o maior valor
                         // não-nulo do GRUPO, não da fase da vez.
                         'data_vencimento'              => optional($dataVencimentoGrupo)->format('Y-m-d'),
+                        'renovacao'                    => $renovacao,
                     ]);
                 } else {
                     // Par sem contrato ainda — estado só-de-exibição, base
@@ -341,6 +362,7 @@ class ContratoAdminController extends Controller
                         // Quick 260824-kbk — maior não-nulo do GRUPO, mesma
                         // disciplina do ramo com contrato acima.
                         'data_vencimento'              => optional($dataVencimentoGrupo)->format('Y-m-d'),
+                        'renovacao'                    => $renovacao,
                     ]);
                 }
             }
@@ -404,6 +426,25 @@ class ContratoAdminController extends Controller
 
         if ($servico !== null) {
             $linhas = $linhas->filter(fn (array $l) => $l['servico_id'] === $servico)->values();
+        }
+
+        // (6c) Fase 202 — filtro de renovação, whitelist, em memória e DEPOIS
+        // do resumo (as contagens seguem absolutas). Os chips mostram quantas
+        // linhas cada filtro pegaria sobre a coleção completa.
+        $renovacaoResumo = [];
+        foreach (self::FILTROS_RENOVACAO as $chaveFiltro) {
+            $renovacaoResumo[$chaveFiltro] = $linhas
+                ->filter(fn (array $l) => $this->casaFiltroRenovacao($l['renovacao'], $chaveFiltro))
+                ->count();
+        }
+
+        $renovacaoInput = $request->input('renovacao');
+        $filtroRenovacao = in_array($renovacaoInput, self::FILTROS_RENOVACAO, true) ? $renovacaoInput : null;
+
+        if ($filtroRenovacao !== null) {
+            $linhas = $linhas
+                ->filter(fn (array $l) => $this->casaFiltroRenovacao($l['renovacao'], $filtroRenovacao))
+                ->values();
         }
 
         // (7) Ordenação — whitelist em PHP, valor fora da lista cai no
@@ -487,6 +528,7 @@ class ContratoAdminController extends Controller
                 // critério.
                 'servico'  => $servico,
                 'ordenar'  => $ordenar,
+                'renovacao' => $filtroRenovacao,
             ],
             // Lista para o select de serviço — os mesmos que definem o
             // universo da tela (`exige_contrato`), ordenados por nome.
@@ -502,7 +544,100 @@ class ContratoAdminController extends Controller
             // listagem (Fase 131); só diz à tela se deve contar a
             // consequência do bloqueio na faixa.
             'bloqueio_ativo'     => $router->bloqueioAtivo(),
+            'renovacao_resumo'   => $renovacaoResumo,
+            'renovacao_config'   => [
+                'ativa'              => RenovacaoConfig::ativa(),
+                'simulacao'          => RenovacaoConfig::simulacao(),
+                'antecedencia_meses' => RenovacaoConfig::antecedenciaMeses(),
+            ],
         ]);
+    }
+
+    /**
+     * Fase 202 — filtros de renovação aceitos (whitelist).
+     */
+    private const FILTROS_RENOVACAO = [
+        'vence_30d', 'vence_2m', 'vencido', 'renovado', 'sem_termino',
+        'erro_sync', 'revisao_manual', 'aguardando_conciliacao',
+    ];
+
+    private function casaFiltroRenovacao(array $r, string $filtro): bool
+    {
+        return match ($filtro) {
+            'vence_30d'              => $r['vence_30d'],
+            'vence_2m'               => $r['prazo'] === RenovacaoJanela::NA_JANELA,
+            'vencido'                => $r['prazo'] === RenovacaoJanela::VENCIDO,
+            'renovado'               => $r['ultima_renovacao_em'] !== null,
+            'sem_termino'            => $r['prazo'] === RenovacaoJanela::SEM_TERMINO,
+            'erro_sync'              => $r['status_integracao'] === ContratoRenovacao::STATUS_INTEGRACAO_ERRO,
+            'revisao_manual'         => $r['status_integracao'] === ContratoRenovacao::STATUS_INTEGRACAO_REVISAO_MANUAL,
+            'aguardando_conciliacao' => in_array($r['status_integracao'], [
+                ContratoRenovacao::STATUS_INTEGRACAO_CRIANDO,
+                ContratoRenovacao::STATUS_INTEGRACAO_RESULTADO_INCERTO,
+            ], true),
+            default                  => false,
+        };
+    }
+
+    private function urlNegocio(?string $dealId, $portalId): ?string
+    {
+        if (! filled($dealId) || ! filled($portalId)) {
+            return null;
+        }
+
+        return 'https://app.hubspot.com/contacts/'.$portalId.'/record/0-3/'.$dealId;
+    }
+
+    /**
+     * Fase 202 — bloco `renovacao` de UMA linha (empresa x grupo de contrato).
+     *
+     * @param  \Illuminate\Support\Collection  $membros  ContratoServico do grupo
+     * @param  \Illuminate\Support\Collection  $ciclos   ciclos do par, o mais novo primeiro
+     */
+    private function dadosDeRenovacao($membros, $ciclos, ?string $negocioOriginalEmpresa, $portalId, Carbon $hoje): array
+    {
+        $dataFim = $membros->pluck('data_vencimento')->filter()->max();
+        $termino = $dataFim ? Carbon::parse($dataFim) : null;
+
+        // Origem do término: calculada em qualquer item do grupo vence; senão
+        // a origem do item que define o máximo; sem origem = digitada.
+        $origem = null;
+        if ($membros->contains(fn ($m) => $m->data_vencimento_origem === ContratoServico::ORIGEM_TERMINO_CALCULADA)) {
+            $origem = ContratoServico::ORIGEM_TERMINO_CALCULADA;
+        } elseif ($termino !== null) {
+            $definidor = $membros->first(fn ($m) => $m->data_vencimento !== null
+                && Carbon::parse($m->data_vencimento)->isSameDay($termino));
+            $origem = $definidor?->data_vencimento_origem;
+        }
+
+        $prazo = RenovacaoJanela::situacao($termino, $hoje);
+        $ciclo = $ciclos->first();
+        $final = $ciclo !== null && in_array($ciclo->status_comercial, ContratoRenovacao::STATUS_COMERCIAIS_FINAIS, true);
+        $ultimaRenovacao = $ciclos->pluck('renovado_em')->filter()->max();
+        $originalId = $ciclo?->negocio_original_id ?: $negocioOriginalEmpresa;
+
+        return [
+            'termino_origem'          => $origem ?? ContratoServico::ORIGEM_TERMINO_MANUAL,
+            'dias_restantes'          => RenovacaoJanela::diasRestantes($termino, $hoje),
+            'prazo'                   => $prazo,
+            'vence_30d'               => RenovacaoJanela::venceEmAte30Dias($termino, $hoje),
+            'ciclo_id'                => $ciclo?->id,
+            'numero_ciclo'            => $ciclo?->numero_ciclo,
+            'status_comercial'        => $ciclo?->status_comercial,
+            'status_integracao'       => $ciclo?->status_integracao,
+            'ultima_decisao'          => $ciclo?->ultima_decisao,
+            'ultima_decisao_simulada' => (bool) $ciclo?->ultima_decisao_simulada,
+            'ultima_sincronizacao_em' => $ciclo?->ultima_sincronizacao_em?->toIso8601String(),
+            'ultimo_erro'             => $ciclo?->ultimo_erro ? mb_substr((string) $ciclo->ultimo_erro, 0, 200) : null,
+            'ultima_renovacao_em'     => $ultimaRenovacao ? Carbon::parse($ultimaRenovacao)->toIso8601String() : null,
+            'negocio_original_id'     => $originalId,
+            'negocio_original_url'    => $this->urlNegocio($originalId, $portalId),
+            'negocio_renovacao_id'    => $ciclo?->negocio_renovacao_id,
+            'negocio_renovacao_url'   => $this->urlNegocio($ciclo?->negocio_renovacao_id, $portalId),
+            'pode_sincronizar'        => in_array($prazo, [RenovacaoJanela::NA_JANELA, RenovacaoJanela::VENCIDO], true)
+                || ($ciclo !== null && ! $final),
+            'pode_dispensar'          => $ciclo !== null && ! $final,
+        ];
     }
 
     /**
