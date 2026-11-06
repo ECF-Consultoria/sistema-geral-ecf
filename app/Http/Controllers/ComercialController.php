@@ -15,6 +15,7 @@ use App\Notifications\EmpresaCadastradaNotification;
 use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
+use App\Services\Contratos\TerminoContratoService;
 use App\Services\FluxoEntrada\EtapaTransicaoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\Request;
@@ -623,6 +624,9 @@ class ComercialController extends Controller
 
                 $servicosCriados->push($servico);
             }
+
+            // Fase 202 (REN-01) — término calculado já na entrada, mesma regra do backfill.
+            app(TerminoContratoService::class)->preencherEmpresa($company);
 
             // (c) Roteamento — Fase 124 (FLUXO-04): a mecânica que antes vivia
             // inline aqui (dedup por TIPO, sem guard entre iterações — D-08)
