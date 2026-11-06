@@ -5381,10 +5381,16 @@ alcançável por `pub_imagem_id` (nenhuma coluna nova) e o vínculo com a origin
 **Goal:** Todo contrato ativo tem data de término; 2 meses de calendário antes dela o sistema cria, uma única vez por contrato/ciclo, um negócio NOVO no pipeline "Renovações contrato" do HubSpot (o original Ganho fica intocado), visível e reprocessável na tela de contratos; quando a renovação vai para "Negócio fechado", o contrato é estendido. Plano-fonte: `PLANO_RENOVACAO_CONTRATUAL_ECF_ADMIN.md`; decisões em `202-CONTEXT.md`.
 **Requirements**: REN-01..REN-08 (ver 202-CONTEXT.md)
 **Depends on:** Nenhuma (independente da v28.0)
-**Plans:** 0 plans
+**Plans:** 7 plans (5 ondas)
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 202 to break down)
+- [ ] 202-01-PLAN.md — término com origem (D-03), tabelas de ciclo/eventos, comando `contratos:calcular-termino` (dry-run), entrada do Comercial
+- [ ] 202-02-PLAN.md — cliente HubSpot (criar deal com associações, busca por correlação, pipeline, retry/429) + `renovacao:hubspot-preparar`
+- [ ] 202-03-PLAN.md — domínio: chaves liga/desliga/simulação, janela de calendário, detector de ciclos, extensão no ganho (D-05), política da matriz §4.3.4
+- [ ] 202-04-PLAN.md — orquestrador idempotente + job `high` com lock + `renovacao:verificar` agendado + `renovacao:chave`
+- [ ] 202-05-PLAN.md — webhook: renovação fora do fluxo de venda + "Negócio fechado" estende contrato + término na entrada
+- [ ] 202-06-PLAN.md — tela `/administrativo/contratos`: filtros, término/origem, situação, links original × renovação, sincronizar/dispensar/histórico
+- [ ] 202-07-PLAN.md — gate: suíte verde, learning, roteiro de ativação em produção (checkpoint humano)
 
 ---
 
