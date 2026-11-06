@@ -755,3 +755,12 @@ Schedule::command('bling:estoque')
     ->onOneServer()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/bling.log'));
+
+// Fase 202 — renovação contratual: verificação diária dos contratos na janela de renovação. O próprio
+// comando respeita a chave `renovacao_automatica_ativa` (nasce DESLIGADA) e o modo simulação; cada ciclo
+// vira um job na fila `high`. 07:35 fica fora do minuto 06:00 (o `adman:warm-diff` segura aquele minuto).
+Schedule::command('renovacao:verificar')
+    ->dailyAt('07:35')
+    ->timezone('America/Sao_Paulo')
+    ->name('renovacao-contratos-verificar')
+    ->withoutOverlapping();
