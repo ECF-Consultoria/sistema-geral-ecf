@@ -765,6 +765,16 @@ Schedule::command('contratos:ler-clicksign')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Fase 202-08 — recalcula o término dos contratos ativos com o que a leitura das 07:05 trouxe (contrato
+// assinado > HubSpot > 12 meses; renovação automática do contrato). `manual` e `renovacao` nunca mudam.
+// Antes do `renovacao:verificar` (07:35), que corrige/dispensa os ciclos cujo término mudou.
+// Autorizado pelo usuário em 09/11/2026, depois de conferir a primeira rodada em produção.
+Schedule::command('contratos:calcular-termino --aplicar')
+    ->dailyAt('07:15')
+    ->timezone('America/Sao_Paulo')
+    ->name('contratos-calcular-termino')
+    ->withoutOverlapping();
+
 // Fase 202 — renovação contratual: verificação diária dos contratos na janela de renovação. O próprio
 // comando respeita a chave `renovacao_automatica_ativa` (nasce DESLIGADA) e o modo simulação; cada ciclo
 // vira um job na fila `high`. 07:35 fica fora do minuto 06:00 (o `adman:warm-diff` segura aquele minuto).
