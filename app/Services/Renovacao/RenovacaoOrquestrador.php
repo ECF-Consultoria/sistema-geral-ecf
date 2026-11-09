@@ -32,6 +32,7 @@ class RenovacaoOrquestrador
         private RenovacaoDetector $detector,
         private RenovacaoDecisaoPolicy $politica,
         private RenovacaoExtensaoService $extensao,
+        private VinculoHubspotResolver $vinculo,
     ) {}
 
     /**
@@ -237,11 +238,25 @@ class RenovacaoOrquestrador
         $company = $ciclo->company;
         $props   = $this->propriedadesDoDeal($ciclo);
 
+        // 09/11/2026 — descobre empresa/contato do HubSpot que faltam no
+        // cadastro (negócio original → e-mail). Falha de leitura aqui NÃO
+        // impede a criação: o usuário decidiu que sem vínculo o negócio sai
+        // mesmo assim, sem associação, para o prazo não se perder.
+        $vinculo = null;
+        try {
+            $vinculo = $this->vinculo->resolver($company, true);
+        } catch (HubspotErroApi $e) {
+            $this->log('warning', "ciclo {$ciclo->id}: não foi possível procurar o vínculo no HubSpot: " . mb_substr($e->getMessage(), 0, 300), $ciclo);
+        }
+
+        $companyIdHs = $ciclo->hubspot_company_id ?: ($vinculo['company_id'] ?? $company->hubspot_company_id);
+        $contactIdHs = $vinculo['contact_id'] ?? $company->hubspot_contact_id;
+
         try {
             $deal = $this->hubspot->criarDeal(
                 $props,
-                $ciclo->hubspot_company_id ?: $company->hubspot_company_id,
-                $company->hubspot_contact_id
+                $companyIdHs ?: null,
+                $contactIdHs ?: null
             );
         } catch (HubspotErroApi $e) {
             $this->tratarErroCriacao($ciclo, $e, $origem, $userId, $anteriorInicio, $anteriorTentativa, $anteriorStatus);
@@ -277,6 +292,12 @@ class RenovacaoOrquestrador
             'negocio_original_id'  => $ciclo->negocio_original_id,
             'negocio_original_ausente' => $ciclo->negocio_original_id === null,
             'chave_correlacao'     => $ciclo->chave_correlacao,
+            // 09/11/2026 — com o que o negócio foi associado (empresa,
+            // contato, nenhum) e de onde veio cada vínculo.
+            'associado_empresa'    => $companyIdHs ?: null,
+            'associado_contato'    => $contactIdHs ?: null,
+            'fonte_empresa'        => $vinculo['fonte_empresa'] ?? null,
+            'fonte_contato'        => $vinculo['fonte_contato'] ?? null,
         ], false, $userId);
         $this->log('info', "ciclo {$ciclo->id}: negócio {$deal['id']} criado", $ciclo);
 

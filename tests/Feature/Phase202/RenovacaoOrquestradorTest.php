@@ -36,6 +36,10 @@ class RenovacaoOrquestradorTest extends TestCase
     private int $statusSearch = 200;
     /** POSTs de criação tentados (Http::recorded não registra o que estoura por timeout). */
     private int $postsTentados = 0;
+    /** 09/11/2026 — vínculo: contatos do negócio original, contatos por e-mail, empresas do contato. */
+    private array $contatosDoOriginal = [];
+    private array $contatosPorEmail = [];
+    private array $empresasDoContato = [];
 
     protected function setUp(): void
     {
@@ -77,6 +81,15 @@ class RenovacaoOrquestradorTest extends TestCase
             $url = $r->url();
             $m   = $r->method();
 
+            if ($m === 'POST' && str_ends_with($url, '/crm/v3/objects/contacts/search')) {
+                return Http::response(['results' => $this->contatosPorEmail]);
+            }
+            if ($m === 'GET' && preg_match('#/crm/v3/objects/deals/([^/]+)/associations/contacts$#', $url)) {
+                return Http::response(['results' => array_map(fn ($id) => ['id' => $id, 'type' => 'deal_to_contact'], $this->contatosDoOriginal)]);
+            }
+            if ($m === 'GET' && preg_match('#/crm/v3/objects/contacts/([^/]+)/associations/companies$#', $url)) {
+                return Http::response(['results' => array_map(fn ($id) => ['id' => $id, 'type' => 'contact_to_company'], $this->empresasDoContato)]);
+            }
             if ($m === 'POST' && str_ends_with($url, '/crm/v3/objects/deals/search')) {
                 return $this->statusSearch === 200
                     ? Http::response(['results' => $this->deals])
@@ -172,6 +185,125 @@ class RenovacaoOrquestradorTest extends TestCase
         $this->assertSame('criar', $ciclo->ultima_decisao);
         $this->assertFalse($ciclo->ultima_decisao_simulada);
         $this->assertTrue($ciclo->eventos()->where('tipo', 'negocio_criado')->exists());
+    }
+
+    // ─── 09/11/2026 — empresa sem vínculo no HubSpot não bloqueia mais ───
+
+    private function postCriacao(): array
+    {
+        return Http::recorded(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/crm/v3/objects/deals'))->first()[0]->data();
+    }
+
+    public function test_sem_empresa_no_hubspot_associa_ao_contato_do_negocio_original_e_grava_o_vinculo(): void
+    {
+        // Forma medida em produção: o negócio original só tem CONTATO.
+        $this->associadas         = [];
+        $this->contatosDoOriginal = ['K-ORIG'];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_company_id' => null, 'hubspot_contact_id' => null, 'hubspot_deal_id' => self::ORIGINAL]);
+
+        $dec = $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $this->assertSame(RenovacaoDecisao::CRIAR, $dec->acao);
+        $this->assertSame(1, $this->posts());
+        $assoc = $this->postCriacao()['associations'];
+        $this->assertCount(1, $assoc);
+        $this->assertSame('K-ORIG', $assoc[0]['to']['id']);
+        $this->assertSame(3, $assoc[0]['types'][0]['associationTypeId']);
+
+        $empresa = $ciclo->company->fresh();
+        $this->assertSame('K-ORIG', $empresa->hubspot_contact_id);
+        $this->assertNull($empresa->hubspot_company_id);
+        $evento = $ciclo->eventos()->where('tipo', 'negocio_criado')->first();
+        $this->assertSame('negocio_original', $evento->dados['fonte_contato'] ?? null);
+    }
+
+    public function test_contato_pelo_email_traz_a_empresa_principal_dele(): void
+    {
+        $this->associadas       = [];
+        $this->contatosPorEmail = [['id' => 'K-MAIL', 'properties' => ['email' => 'a@b.com', 'associatedcompanyid' => 'HC-MAIL']]];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_company_id' => null, 'hubspot_contact_id' => null, 'hubspot_deal_id' => null, 'email_cliente' => 'a@b.com']);
+
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $tipos = collect($this->postCriacao()['associations'])->pluck('types.0.associationTypeId')->all();
+        $this->assertSame([5, 3], $tipos);
+        $empresa = $ciclo->company->fresh();
+        $this->assertSame('HC-MAIL', $empresa->hubspot_company_id);
+        $this->assertSame('K-MAIL', $empresa->hubspot_contact_id);
+    }
+
+    public function test_sem_nada_no_hubspot_cria_sem_associacao(): void
+    {
+        $this->associadas = [];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_company_id' => null, 'hubspot_contact_id' => null, 'hubspot_deal_id' => null, 'email_cliente' => 'ninguem@x.com']);
+
+        $dec = $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $this->assertSame(RenovacaoDecisao::CRIAR, $dec->acao);
+        $this->assertSame(1, $this->posts());
+        $this->assertArrayNotHasKey('associations', $this->postCriacao());
+        $this->assertSame('D-NEW', $ciclo->fresh()->negocio_renovacao_id);
+    }
+
+    public function test_dois_contatos_com_o_mesmo_email_nao_escolhe_nenhum(): void
+    {
+        $this->associadas       = [];
+        $this->contatosPorEmail = [
+            ['id' => 'K1', 'properties' => ['associatedcompanyid' => null]],
+            ['id' => 'K2', 'properties' => ['associatedcompanyid' => null]],
+        ];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_company_id' => null, 'hubspot_contact_id' => null, 'hubspot_deal_id' => null, 'email_cliente' => 'dup@x.com']);
+
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $this->assertArrayNotHasKey('associations', $this->postCriacao());
+        $this->assertNull($ciclo->company->fresh()->hubspot_contact_id);
+    }
+
+    public function test_vinculo_ja_gravado_nunca_e_trocado(): void
+    {
+        $this->contatosDoOriginal = ['K-OUTRO'];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_deal_id' => self::ORIGINAL]);
+
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $empresa = $ciclo->company->fresh();
+        $this->assertSame('HC1', $empresa->hubspot_company_id);
+        $this->assertSame('HK1', $empresa->hubspot_contact_id);
+    }
+
+    public function test_simulacao_nao_procura_vinculo_nem_grava(): void
+    {
+        $this->associadas         = [];
+        $this->contatosDoOriginal = ['K-ORIG'];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_company_id' => null, 'hubspot_contact_id' => null, 'hubspot_deal_id' => self::ORIGINAL]);
+
+        $dec = $this->orq()->sincronizar($ciclo, 'agendador', null, true);
+
+        $this->assertSame(RenovacaoDecisao::CRIAR, $dec->acao);
+        $this->assertSame(0, $this->posts());
+        $this->assertNull($ciclo->company->fresh()->hubspot_contact_id);
+    }
+
+    public function test_comando_vincular_simula_e_aplica(): void
+    {
+        $this->associadas         = [];
+        $this->contatosDoOriginal = ['K-ORIG'];
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['hubspot_company_id' => null, 'hubspot_contact_id' => null, 'hubspot_deal_id' => self::ORIGINAL]);
+
+        $this->artisan('renovacao:vincular-hubspot', ['--pausa-ms' => 0])->expectsOutputToContain('SIMULAÇÃO')->assertSuccessful();
+        $this->assertNull($ciclo->company->fresh()->hubspot_contact_id);
+
+        $this->artisan('renovacao:vincular-hubspot', ['--aplicar' => true, '--pausa-ms' => 0])->assertSuccessful();
+        $this->assertSame('K-ORIG', $ciclo->company->fresh()->hubspot_contact_id);
+        $this->assertSame(0, $this->posts());
     }
 
     public function test_empresa_sem_dono_nao_envia_hubspot_owner_id(): void

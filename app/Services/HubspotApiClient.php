@@ -846,6 +846,34 @@ class HubspotApiClient
     }
 
     /**
+     * Renovação (09/11/2026) — contatos com este e-mail exato.
+     * POST /crm/v3/objects/contacts/search (leitura; pode repetir).
+     *
+     * @return array<int, array{id: string, company_id: ?string}>
+     * @throws HubspotErroApi
+     */
+    public function buscarContatosPorEmail(string $email): array
+    {
+        $res = $this->leitura('post', '/crm/v3/objects/contacts/search', [
+            'filterGroups' => [[
+                'filters' => [['propertyName' => 'email', 'operator' => 'EQ', 'value' => $email]],
+            ]],
+            'properties' => ['email', 'associatedcompanyid'],
+            'limit'      => 10,
+        ]);
+
+        return array_values(array_map(
+            static fn ($r) => [
+                'id'         => (string) ($r['id'] ?? ''),
+                'company_id' => filled($r['properties']['associatedcompanyid'] ?? null)
+                    ? (string) $r['properties']['associatedcompanyid']
+                    : null,
+            ],
+            $res->json('results') ?? []
+        ));
+    }
+
+    /**
      * POST /crm/v3/objects/deals/search (leitura; pode repetir).
      *
      * @return array<int, array{id: string, properties: array}>

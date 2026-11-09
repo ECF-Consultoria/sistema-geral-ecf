@@ -153,10 +153,12 @@ class RenovacaoDecisaoPolicyTest extends TestCase
         $this->assertSame(D::CRIAR, $this->decidir(['status_integracao' => 'revisao_manual', 'liberar_criacao' => true])->acao);
     }
 
-    public function test_empresa_sem_hubspot(): void
+    public function test_empresa_sem_hubspot_cria_mesmo_assim(): void
     {
+        // 09/11/2026 — decisão do usuário: sem empresa no HubSpot o negócio de
+        // renovação sai associado ao contato ou sem associação; não bloqueia.
         $d = $this->decidir(['tem_hubspot_company' => false]);
-        $this->assertSame('empresa_sem_hubspot', $d->motivo);
+        $this->assertSame(D::CRIAR, $d->acao);
     }
 
     public function test_tentativas_esgotadas_e_liberacao_ignora_contador(): void

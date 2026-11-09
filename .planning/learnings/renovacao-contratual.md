@@ -142,3 +142,26 @@ término de origem `contrato` que já passou AVANÇA de prazo em prazo até hoje
 → 11/09/2027), em vez de aparecer como "vencido". Exceção: com ciclo de renovação ABERTO do grupo não avança — o
 Comercial está tratando aquele término, e quem decide é o fechamento (origem `renovacao`) ou a dispensa.
 Só vale para origem `contrato` (o período do HubSpot não carrega essa cláusula).
+
+## Empresa sem vínculo com o HubSpot não bloqueia mais a renovação (09/11/2026)
+
+**Medido em produção:** das 21 empresas na janela de renovação, **nenhuma** tinha `hubspot_company_id`, e a política
+mandava todas para revisão manual (`empresa_sem_hubspot`). O motivo não é cadastro mal feito:
+
+- o Comercial associa os negócios do HubSpot **só ao contato** — os 4 negócios originais conferidos
+  (Barganhas, Flipshop, TY, Metalform) não têm empresa associada lá;
+- as empresas do HubSpot **não têm propriedade de CNPJ** (busca por `cnpj` devolve 400) — CNPJ não serve para casar;
+- os clientes antigos (cadastro anterior à integração) não existem no HubSpot nem como contato.
+
+**Decisão do usuário (09/11):** o negócio de renovação sai associado à empresa quando ela existe, ao contato quando só
+ele existe, e **sem associação** quando não há nada — para o prazo não se perder; o Comercial associa depois.
+
+**Como funciona:** `VinculoHubspotResolver` (chamado pelo orquestrador só na criação real, nunca em simulação) procura
+contato → contatos do negócio original, senão contato com o e-mail exato do cadastro (só com UM resultado); empresa →
+empresas do negócio original (só com UMA), senão a empresa principal do contato. **Nunca casa por nome** (o nome do
+HubSpot diverge muito: "VivaConforto" × "VIVACONFORTO", e negócio "Resilfer" ligado à Metalform). Só preenche campo
+vazio, por query com `whereNull` (sem disparar observers de Company). `renovacao:vincular-hubspot [--aplicar]` faz o
+mesmo em lote para as empresas com ciclo aberto.
+
+**Sujeiras vistas no caminho (não são bug):** o negócio original da TY Distribuidora está **perdido** no HubSpot; o
+negócio ligado à Metalform se chama "Resilfer".

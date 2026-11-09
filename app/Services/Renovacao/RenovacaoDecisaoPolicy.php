@@ -89,10 +89,13 @@ class RenovacaoDecisaoPolicy
             return new RenovacaoDecisao(RenovacaoDecisao::REVISAO_MANUAL, 'revisao_manual_pendente', null, 'Ciclo em revisão manual; aguardando liberação.');
         }
 
-        // Matriz: precisa da empresa no HubSpot para associar o negócio.
-        if (! ($ctx['tem_hubspot_company'] ?? false)) {
-            return new RenovacaoDecisao(RenovacaoDecisao::REVISAO_MANUAL, 'empresa_sem_hubspot', null, 'A empresa não tem vínculo com o HubSpot.');
-        }
+        // 09/11/2026 — empresa sem vínculo com o HubSpot NÃO bloqueia mais.
+        // Medido: o Comercial liga os negócios só ao contato e os clientes
+        // antigos nem existem lá; exigir a empresa deixava 21 de 21 contratos
+        // parados. Decisão do usuário: o negócio de renovação vai associado à
+        // empresa, ao contato, ou sem associação (o orquestrador resolve com
+        // `VinculoHubspotResolver` antes de criar). `tem_hubspot_company`
+        // segue no contexto só para registro.
 
         // Matriz: tentativas esgotadas (a liberação ignora o contador).
         if (! $liberar && (int) ($ctx['tentativas'] ?? 0) >= (int) ($ctx['max_tentativas'] ?? 3)) {
