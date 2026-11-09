@@ -99,6 +99,62 @@ class TerminoPeloContratoAssinadoTest extends TestCase
         $this->assertSame('contrato', $cs->fresh()->data_vencimento_origem);
     }
 
+    public function test_contrato_de_2025_vencido_avanca_pela_renovacao_automatica(): void
+    {
+        // Kaiton em produção: assinado 11/09/2025, 12 meses → venceu 11/09/2026,
+        // mas a cláusula renova automaticamente → 11/09/2027 (decisão 09/11/2026).
+        $c  = Company::factory()->create(['active' => true]);
+        $cs = $this->contrato($c, $this->servico(), ['data_contratacao' => '2026-05-25']);
+        $this->assinado($c, ['assinado_em' => '2025-09-11 10:00:00']);
+
+        $this->preencher($c);
+        $this->assertSame('2027-09-11', $cs->fresh()->data_vencimento->toDateString());
+        $this->assertSame('contrato', $cs->fresh()->data_vencimento_origem);
+
+        // Prazo curto avança várias vezes até hoje ou depois; idempotente.
+        $c2  = Company::factory()->create(['active' => true]);
+        $cs2 = $this->contrato($c2, $this->servico(), ['data_contratacao' => '2026-05-25']);
+        $this->assinado($c2, ['assinado_em' => '2025-11-03 10:00:00', 'vigencia_meses' => 4]);
+
+        $this->preencher($c2);
+        $this->preencher($c2);
+        // 03/11/2025 → 03/03 → 03/07 → 03/11/2026 (ainda antes de 09/11) → 03/03/2027.
+        $this->assertSame('2027-03-03', $cs2->fresh()->data_vencimento->toDateString());
+
+        // Término exatamente hoje não avança.
+        $c3  = Company::factory()->create(['active' => true]);
+        $cs3 = $this->contrato($c3, $this->servico(), ['data_contratacao' => '2026-05-25']);
+        $this->assinado($c3, ['assinado_em' => '2025-11-09 10:00:00']);
+        $this->preencher($c3);
+        $this->assertSame('2026-11-09', $cs3->fresh()->data_vencimento->toDateString());
+    }
+
+    public function test_nao_avanca_com_ciclo_de_renovacao_aberto(): void
+    {
+        $c  = Company::factory()->create(['active' => true]);
+        $s  = $this->servico();
+        $cs = $this->contrato($c, $s, ['data_contratacao' => '2026-05-25']);
+        $this->assinado($c, ['assinado_em' => '2025-10-20 10:00:00']);
+
+        \App\Models\ContratoRenovacao::create([
+            'company_id'        => $c->id,
+            'servico_id'        => $s->id,
+            'numero_ciclo'      => 1,
+            'chave_ciclo'       => "teste-{$c->id}-1",
+            'chave_correlacao'  => "corr-{$c->id}-1",
+            'termino_capturado' => '2026-10-20',
+            'vigencia_meses'    => 12,
+            'status_comercial'  => \App\Models\ContratoRenovacao::STATUS_COMERCIAL_EM_NEGOCIACAO,
+            'status_integracao' => \App\Models\ContratoRenovacao::STATUS_INTEGRACAO_SINCRONIZADO,
+            'detectado_em'      => now(),
+        ]);
+
+        $this->preencher($c);
+
+        // O Comercial está tratando este término: fica vencido até fechar ou dispensar.
+        $this->assertSame('2026-10-20', $cs->fresh()->data_vencimento->toDateString());
+    }
+
     public function test_acmax_tres_itens_p12m_em_paralelo_nao_somam(): void
     {
         $this->assertSame(12, VigenciaContrato::mesesDoGrupo([

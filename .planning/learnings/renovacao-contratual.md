@@ -134,3 +134,11 @@ Roteiro completo de ativação: `.planning/phases/202-renova-o-contratual-vencim
 - **A extensão pela renovação ganha usa o prazo do contrato** (Brigada estende 12, não 4).
 - Empresas duplicadas no cadastro (Ab4: 380/402/403; Flipshop: 383/415): o contrato casa com UMA delas; as
   outras seguem pelo HubSpot. Não resolvido aqui.
+
+## Renovação automática do contrato assinado (09/11/2026)
+
+Os contratos da ECF dizem "renovando-se automaticamente por períodos iguais e sucessivos". Por decisão do usuário,
+término de origem `contrato` que já passou AVANÇA de prazo em prazo até hoje ou depois (Kaiton, assinado 11/09/2025
+→ 11/09/2027), em vez de aparecer como "vencido". Exceção: com ciclo de renovação ABERTO do grupo não avança — o
+Comercial está tratando aquele término, e quem decide é o fechamento (origem `renovacao`) ou a dispensa.
+Só vale para origem `contrato` (o período do HubSpot não carrega essa cláusula).

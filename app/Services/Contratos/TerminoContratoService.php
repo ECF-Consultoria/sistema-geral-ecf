@@ -5,6 +5,7 @@ namespace App\Services\Contratos;
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoClicksignAssinado;
+use App\Models\ContratoRenovacao;
 use App\Models\ContratoServico;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -66,7 +67,12 @@ class TerminoContratoService
             }
 
             $assinado      = $this->contratoAssinadoDoGrupo($company, $donoId, $grupo, $totalGrupos);
-            $termoContrato = $this->terminoPeloContrato($assinado);
+            $termoContrato = $this->rolarRenovacaoAutomatica(
+                $company,
+                $donoId,
+                $this->terminoPeloContrato($assinado),
+                (int) ($assinado?->vigencia_meses ?? 0)
+            );
 
             [$inicio, $fonte] = $this->inicioDoGrupo($company, $donoId, $grupo, $assinado);
             $meses = $termoContrato !== null
@@ -242,6 +248,47 @@ class TerminoContratoService
         return VigenciaContrato::mesesDoGrupo(
             $grupo->map(fn (ContratoServico $cs) => ['servico' => $cs->servico_id, 'parcelas' => $cs->parcelas()])
         );
+    }
+
+    /**
+     * Renovação automática do contrato (cláusula "renovando-se automaticamente por
+     * períodos iguais e sucessivos"): término do contrato assinado que já passou
+     * avança de prazo em prazo até ficar em hoje ou no futuro — decisão do usuário
+     * em 09/11/2026 (contrato de 2025 não é "vencido", está em vigor).
+     *
+     * Não avança enquanto houver ciclo de renovação ABERTO do grupo: o Comercial está
+     * tratando esse término, e quem decide é o fechamento (estende, origem `renovacao`)
+     * ou a dispensa.
+     */
+    private function rolarRenovacaoAutomatica(Company $company, int $donoId, ?string $termo, int $meses): ?string
+    {
+        if ($termo === null || $meses <= 0) {
+            return $termo;
+        }
+
+        $hoje   = Carbon::today();
+        $limite = Carbon::parse($termo)->startOfDay();
+
+        if ($limite->gte($hoje)) {
+            return $termo;
+        }
+
+        $cicloAberto = ContratoRenovacao::query()
+            ->where('company_id', $company->id)
+            ->where('servico_id', $donoId)
+            ->whereNotIn('status_comercial', ContratoRenovacao::STATUS_COMERCIAIS_FINAIS)
+            ->exists();
+
+        if ($cicloAberto) {
+            return $termo;
+        }
+
+        // Guarda contra laço: 100 períodos bastam para qualquer contrato real.
+        for ($i = 0; $i < 100 && $limite->lt($hoje); $i++) {
+            $limite = VigenciaContrato::terminoPorMeses($limite, $meses);
+        }
+
+        return $limite->toDateString();
     }
 
     /** Término pelo contrato: assinatura + prazo escrito (sem −1 dia, mesma `terminoPorMeses`). */
