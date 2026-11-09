@@ -211,8 +211,9 @@ class TerminoContratoTest extends TestCase
 
         $this->assertSame('2028-01-01', $manual->fresh()->data_vencimento->toDateString());
         $this->assertSame('manual', $manual->fresh()->data_vencimento_origem);
+        // Fase 202-08: origem do sistema é RECALCULADA a cada rodada (antes ficava parada).
         $this->assertSame('calculada', $calc->fresh()->data_vencimento_origem);
-        $this->assertSame('2028-02-02', $calc->fresh()->data_vencimento->toDateString());
+        $this->assertSame('2027-03-10', $calc->fresh()->data_vencimento->toDateString());
     }
 
     public function test_fora_do_universo_inativo_empresa_inativa_e_dono_sem_contrato(): void

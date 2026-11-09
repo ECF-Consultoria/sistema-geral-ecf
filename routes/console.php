@@ -762,7 +762,8 @@ Schedule::command('contratos:ler-clicksign')
     ->dailyAt('07:05')
     ->timezone('America/Sao_Paulo')
     ->name('contratos-ler-clicksign')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // Fase 202 — renovação contratual: verificação diária dos contratos na janela de renovação. O próprio
 // comando respeita a chave `renovacao_automatica_ativa` (nasce DESLIGADA) e o modo simulação; cada ciclo

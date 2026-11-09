@@ -43,6 +43,15 @@ class ContratoServico extends Model
     public const ORIGEM_TERMINO_HUBSPOT   = 'hubspot';
     public const ORIGEM_TERMINO_CALCULADA = 'calculada';
     public const ORIGEM_TERMINO_RENOVACAO = 'renovacao';
+    // Fase 202-08 — término pelo contrato ASSINADO na Clicksign (assinatura + prazo escrito).
+    public const ORIGEM_TERMINO_CONTRATO  = 'contrato';
+
+    /** Origens gravadas pelo cálculo do sistema: recalculadas a cada rodada (manual/renovacao nunca). */
+    public const ORIGENS_TERMINO_RECALCULAVEIS = [
+        self::ORIGEM_TERMINO_CALCULADA,
+        self::ORIGEM_TERMINO_HUBSPOT,
+        self::ORIGEM_TERMINO_CONTRATO,
+    ];
 
     /**
      * Origem informada pelo SISTEMA em `gravarTermino()`. Propriedade

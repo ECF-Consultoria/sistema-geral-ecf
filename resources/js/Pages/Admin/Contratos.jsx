@@ -71,6 +71,10 @@ const ORIGEM_TERMINO = {
         title: "Calculada pelo sistema: início + vigência do contrato. A data de início pode ser a do cadastro, não a da assinatura — confira e corrija no cadastro da empresa; a correção vira 'digitada'.",
     },
     renovacao: { texto: 'renovação', title: 'Data estendida automaticamente quando a renovação foi fechada.' },
+    contrato:  {
+        texto: 'contrato assinado',
+        title: 'Data do contrato assinado na Clicksign: data da assinatura + prazo escrito no contrato. Vale mais que o período de cobrança do HubSpot.',
+    },
 };
 
 function textoDias(dias) {

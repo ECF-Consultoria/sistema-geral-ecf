@@ -17,26 +17,38 @@ class VigenciaContrato
     public const MESES_PADRAO = 12;
 
     /**
+     * Fase 202-08: fases do mesmo serviço com períodos TODOS IGUAIS (ex.: Acmax,
+     * 3 itens `P12M`) são itens em PARALELO, não parcelas em sequência — vale o
+     * período (12), nunca a soma (36, que dava término em 2029). Períodos
+     * diferentes (P1M+P11M, P3M+P9M) seguem somando (escalonado).
+     *
      * @param  iterable<array{servico?: mixed, parcelas?: ?int}>  $fases
      */
     public static function mesesDoGrupo(iterable $fases): int
     {
-        $mesesPorServico = [];
+        $periodosPorServico = [];
 
         foreach ($fases as $fase) {
             $parcelas = $fase['parcelas'] ?? null;
 
             if (! is_numeric($parcelas) || (int) $parcelas <= 0) {
-                $mesesPorServico = [];
-
-                break;
+                return self::MESES_PADRAO;
             }
 
             $nome = $fase['servico'] ?? '';
-            $mesesPorServico[$nome] = ($mesesPorServico[$nome] ?? 0) + (int) $parcelas;
+            $periodosPorServico[$nome][] = (int) $parcelas;
         }
 
-        return $mesesPorServico === [] ? self::MESES_PADRAO : max($mesesPorServico);
+        if ($periodosPorServico === []) {
+            return self::MESES_PADRAO;
+        }
+
+        $mesesPorServico = array_map(
+            fn (array $periodos) => count(array_unique($periodos)) === 1 ? $periodos[0] : array_sum($periodos),
+            $periodosPorServico
+        );
+
+        return max($mesesPorServico);
     }
 
     /**
