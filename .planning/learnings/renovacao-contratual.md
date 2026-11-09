@@ -94,3 +94,43 @@ Roteiro completo de ativação: `.planning/phases/202-renova-o-contratual-vencim
 - Campos `ecf_renovacao_chave` e `ecf_negocio_original_id` criados no HubSpot (token tem escrita de esquema).
 - `renovacao:verificar --simular` CRIA as linhas de ciclo no banco (só não escreve no HubSpot) — rodar só
   quando quiser ver a decisão, sabendo que os ciclos ficam.
+
+## Período de cobrança do HubSpot NÃO é vigência (09/11/2026, plano 202-08)
+
+- **O `hs_recurring_billing_period` (`P4M`, `P6M`...) é o PLANO DE PAGAMENTO, não a vigência.** A Brigada é
+  vendida como R$ 2.500 × `P4M` (TCV 10.000) e o contrato assinado diz "pelo prazo de 12 (doze) meses". A
+  simulação mostrou 7 contratos "Gestão" vencendo em 30/11–12/12; Ab4 Store e Flipshop têm contrato de 12 meses
+  (Ab4 assinado em 30/07). Em outros casos bate (Quater: P6M e "vigência de 6 (seis) meses") — por isso não dá
+  para "trocar P4M por 12" no código: a fonte tem que ser o contrato.
+- **Decisão do usuário (travada):** término = data da ASSINATURA + prazo ESCRITO no contrato assinado na
+  Clicksign, origem `contrato`. Sem contrato lido, cai no HubSpot (data expressa → período → 12), com início
+  pela assinatura quando conhecida. `manual` e `renovacao` nunca são sobrescritas.
+- **Onde mora:** `contratos:ler-clicksign` (07:05, incremental) lê os envelopes `closed` para
+  `contratos_clicksign_assinados`; `contratos:calcular-termino` (ou o webhook/Comercial via
+  `preencherEmpresa`) transforma em término. ⚠️ O `calcular-termino` **não é agendado**: depois de ler
+  contrato novo, o término só muda quando alguém roda `--aplicar` (ou quando entra contrato novo pela empresa).
+- **Só `situacao = casado` vale para término** (empresa segura + prazo + data de assinatura). Empresa segura =
+  `certo` (CNPJ/razão exata) ou `provavel` não ambíguo (nome ≥ 85% e 15 pontos à frente do 2º). `duvidoso` e
+  `sem_empresa` ficam para conferência humana e só voltam a ser lidos com `--releer`. `ilegivel` é relido todo dia.
+  `sem_prazo` serve como data de INÍCIO (assinatura) para o cálculo pelo HubSpot.
+- **Filtro de envelope próprio.** `pareceGestaoDeAds()` (Fase 140) NÃO pega Brigada nem o nome que o próprio
+  sistema dá ("Contrato — Gestão — X", sem "ads"). Nunca filtrar por "prestação de serviços" (contrato de
+  funcionário). `canceled` e re-envios "(1)" que não fecharam nunca contam; aditivo/distrato ficam de fora.
+- **Frase de prazo × cláusula de não concorrência.** "pelo período de 12 (doze) meses após o seu término" NÃO é
+  vigência — o regex só aceita "vigência"/"prazo" e descarta qualquer prazo seguido de "após o término".
+  Fallback: "- N Meses" no nome do envelope.
+- **Data da assinatura vem dos EVENTOS do documento** (`document_closed` > `auto_close` > último `sign`), não da
+  listagem de envelopes (não tem data de fechamento). Gravada no fuso de São Paulo.
+- **Itens em PARALELO não somam.** Acmax tinha 3 itens `P12M` do mesmo serviço e o término saiu em 2029.
+  `VigenciaContrato::mesesDoGrupo`: períodos todos iguais = paralelo (vale o período); diferentes = escalonado
+  (soma). ⚠️ Escalonado de fases IGUAIS (P6M + P6M sequenciais) passa a valer 6 — aceito por decisão do plano.
+  O PDF do contrato usa a mesma função e ganhou a correção.
+- **Origens do sistema são recalculadas a cada rodada** (`calculada`, `hubspot`, `contrato` → ação
+  `recalcular`); antes, data já gravada ficava parada (`manter`) para sempre.
+- **Ciclo já criado quando o término muda:** corrigir data não cria ciclo novo. Sem negócio/tentativa remota:
+  na janela atualiza; fora da janela vira `dispensado` com justificativa automática "Término corrigido para
+  dd/mm/aaaa (contrato assinado)…" e, quando o término novo entrar na janela, o detector abre o ciclo seguinte
+  (dispensa HUMANA nunca reabre). Com negócio ou tentativa remota: `revisao_manual` (nunca mexe no HubSpot sozinho).
+- **A extensão pela renovação ganha usa o prazo do contrato** (Brigada estende 12, não 4).
+- Empresas duplicadas no cadastro (Ab4: 380/402/403; Flipshop: 383/415): o contrato casa com UMA delas; as
+  outras seguem pelo HubSpot. Não resolvido aqui.
