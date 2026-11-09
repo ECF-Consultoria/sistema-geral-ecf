@@ -127,6 +127,7 @@ export default function ContratoDetalhe({
     const cadastroForm = useForm({
         cnpj:               company.cnpj ?? '',
         email_cliente:      company.email_cliente ?? '',
+        telefone:           company.telefone ?? '',
         nome_contato:       company.nome_contato ?? '',
         // Quick 260819-guy — razão social/endereço são por EMPRESA.
         razao_social:       company.razao_social ?? '',
@@ -600,6 +601,21 @@ export default function ContratoDetalhe({
                                     deixaria a lista de nomes apertada). Fala do campo que
                                     acabou de ser lido, antes de o formulário continuar. */}
                                 <CnpjRepetidoAviso empresas={empresas_mesmo_cnpj} />
+
+                                <div className="space-y-1.5">
+                                    <Label>Telefone do cliente</Label>
+                                    <Input
+                                        value={cadastroForm.data.telefone}
+                                        onChange={(e) => cadastroForm.setData('telefone', e.target.value)}
+                                        placeholder="Vem do HubSpot — não vai para o contrato"
+                                        maxLength={20}
+                                        className="focus:border-ecf-yellow/40"
+                                    />
+                                    <p className="text-white/40 text-[11px]">Só para consulta do Administrativo — não aparece no contrato.</p>
+                                    {cadastroForm.errors.telefone && (
+                                        <p className="text-red-400 text-[11px]">{cadastroForm.errors.telefone}</p>
+                                    )}
+                                </div>
 
                                 <div className="space-y-1.5">
                                     <Label>Nome de quem assina pela empresa</Label>

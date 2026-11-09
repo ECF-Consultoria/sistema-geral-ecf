@@ -383,6 +383,7 @@ class ContratoAdminDetalheTest extends TestCase
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
             'cnpj'              => '22.333.444/0001-81',
             'email_cliente'     => 'novo-cliente@example.com',
+            'telefone'          => '(11) 98888-7777',
             'nome_contato'      => 'Fulano Atualizado',
             'contratos_servico' => [
                 [
@@ -401,6 +402,7 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame('22.333.444/0001-81', $empresaFresca->cnpj);
         $this->assertSame('novo-cliente@example.com', $empresaFresca->email_cliente);
         $this->assertSame('Fulano Atualizado', $empresaFresca->nome_contato);
+        $this->assertSame('(11) 98888-7777', $empresaFresca->telefone);
 
         $contratoServicoFresco = $contratoServico->fresh();
         $this->assertSame('2026-01-10', $contratoServicoFresco->data_contratacao->format('Y-m-d'));

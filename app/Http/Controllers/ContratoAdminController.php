@@ -828,6 +828,9 @@ class ContratoAdminController extends Controller
                 'name'              => $company->name,
                 'cnpj'              => $company->cnpj,
                 'email_cliente'     => $company->email_cliente,
+                // Telefone do cliente (vem do HubSpot pelo webhook). Só para o
+                // Administrativo ver/corrigir — não entra no contrato.
+                'telefone'          => $company->telefone,
                 'nome_contato'      => $company->nome_contato,
                 // Quick 260819-guy.
                 'razao_social'      => $company->razao_social,
@@ -1348,6 +1351,8 @@ class ContratoAdminController extends Controller
             // sem essa validação. Aqui só formato estrutural (tamanho/tipo).
             'cnpj'                                 => ['nullable', 'string', 'max:20'],
             'email_cliente'                        => ['nullable', 'email'],
+            // Telefone do cliente — só exibição/correção, não vai para o contrato.
+            'telefone'                             => ['nullable', 'string', 'max:20'],
             // Quick 260821-odj — NomeCompletoValido() SAIU pelo mesmo
             // motivo do `cnpj` acima: era a causa raiz do incidente medido
             // (nome_contato de uma palavra só, vindo do HubSpot, bloqueava o
@@ -1450,7 +1455,7 @@ class ContratoAdminController extends Controller
             // Mass assignment sobre os $fillable já existentes de Company — nunca
             // $guarded = [].
             $company->fill(collect($data)->only([
-                'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
+                'cnpj', 'email_cliente', 'telefone', 'nome_contato', 'razao_social',
                 // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
                 'endereco', 'bairro', 'cidade', 'estado', 'cep',
             ])->all());
