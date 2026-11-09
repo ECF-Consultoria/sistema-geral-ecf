@@ -6,7 +6,7 @@ use App\Models\Company;
 use App\Models\ContratoRenovacao;
 use App\Models\ContratoServico;
 use App\Services\Contratos\ContratoGrupos;
-use App\Services\Contratos\VigenciaContrato;
+use App\Services\Contratos\TerminoContratoService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -23,6 +23,7 @@ class RenovacaoDetector
     public function __construct(
         private ContratoGrupos $grupos,
         private NegocioOriginalResolver $original,
+        private TerminoContratoService $termino,
     ) {}
 
     public static function chaveCiclo(int $companyId, int $servicoId, int $numero): string
@@ -117,8 +118,21 @@ class RenovacaoDetector
 
     /**
      * Recalcula o término atual do grupo e atualiza o ciclo não final.
+     *
+     * Fase 202-08 — corrigir o término NÃO cria ciclo novo (REN-02). Quando o
+     * término muda:
+     * - ciclo SEM negócio de renovação e sem tentativa remota:
+     *   - novo término ainda na janela (ou vencido) → atualiza o término capturado;
+     *   - novo término saiu da janela (ficou mais longe) → `dispensado` com
+     *     justificativa automática; quando o contrato voltar a entrar na janela,
+     *     `processarGrupo()` abre o ciclo seguinte pelo término novo;
+     * - ciclo COM negócio criado ou tentativa remota → nunca mexe no HubSpot
+     *   sozinho: atualiza o término capturado (a extensão parte dele) e manda
+     *   para `revisao_manual`. Exceção: a chamada do webhook do ganho
+     *   (`$marcarRevisao = false`), que só ressincroniza antes de estender.
+     * Sempre registra o evento `termino_corrigido`.
      */
-    public function sincronizarTermino(ContratoRenovacao $ciclo, string $origem = 'agendador'): ?Carbon
+    public function sincronizarTermino(ContratoRenovacao $ciclo, string $origem = 'agendador', bool $marcarRevisao = true, ?Carbon $hoje = null): ?Carbon
     {
         $membros = $this->gruposDaEmpresa($ciclo->company)->get((int) $ciclo->servico_id);
 
@@ -134,15 +148,47 @@ class RenovacaoDetector
 
         $antes = $ciclo->termino_capturado?->toDateString();
 
-        if ($antes !== $atual->toDateString()) {
-            $ciclo->update(['termino_capturado' => $atual->toDateString()]);
-            $ciclo->registrarEvento('termino_corrigido', $origem, null, [
-                'termino_antes'  => $antes,
-                'termino_depois' => $atual->toDateString(),
-            ]);
+        if ($antes === $atual->toDateString()) {
+            return $atual;
         }
 
+        $hoje         = ($hoje ?? Carbon::today())->copy()->startOfDay();
+        $temNegocio   = $ciclo->negocio_renovacao_id !== null || $ciclo->criacao_iniciada_em !== null;
+        $saiuDaJanela = RenovacaoJanela::situacao($atual, $hoje) === RenovacaoJanela::FORA_DA_JANELA;
+        $dados        = ['termino_antes' => $antes, 'termino_depois' => $atual->toDateString()];
+
+        if ($temNegocio) {
+            $atualizacao = ['termino_capturado' => $atual->toDateString()];
+
+            if ($marcarRevisao) {
+                $atualizacao['status_integracao'] = ContratoRenovacao::STATUS_INTEGRACAO_REVISAO_MANUAL;
+                $atualizacao['ultimo_erro'] = "Término do contrato corrigido de {$this->br($antes)} para {$this->br($atual)} depois que o negócio de renovação já existia — conferir o negócio no HubSpot.";
+                $dados['motivo'] = 'termino_corrigido';
+                $dados['acao']   = 'revisao_manual';
+            }
+
+            $ciclo->update($atualizacao);
+        } elseif ($saiuDaJanela) {
+            $justificativa = "Término corrigido para {$this->br($atual)} (contrato assinado) — saiu da janela de renovação.";
+            $ciclo->update([
+                'termino_capturado'      => $atual->toDateString(),
+                'status_comercial'       => ContratoRenovacao::STATUS_COMERCIAL_DISPENSADO,
+                'dispensado_em'          => now(),
+                'dispensa_justificativa' => $justificativa,
+            ]);
+            $dados['acao'] = 'dispensado';
+        } else {
+            $ciclo->update(['termino_capturado' => $atual->toDateString()]);
+        }
+
+        $ciclo->registrarEvento('termino_corrigido', $origem, null, $dados);
+
         return $atual;
+    }
+
+    private function br(Carbon|string|null $data): string
+    {
+        return $data === null ? '(sem data)' : Carbon::parse($data)->format('d/m/Y');
     }
 
     /** Linhas ativas agrupadas pelo dono, só grupos cujo dono exige contrato. */
@@ -195,11 +241,24 @@ class RenovacaoDetector
         }
 
         if (in_array($ciclo->status_comercial, ContratoRenovacao::STATUS_COMERCIAIS_FINAIS, true)) {
+            // Fase 202-08: ciclo dispensado SOZINHO porque o término foi corrigido para
+            // fora da janela. Quando o término novo voltar à janela, abre o ciclo
+            // seguinte (chave nova). Dispensa humana nunca reabre.
+            if ($this->dispensadoPorTerminoCorrigido($ciclo)
+                && $termino !== null
+                && RenovacaoJanela::situacao($termino, $hoje) === RenovacaoJanela::NA_JANELA) {
+                return $this->criarCiclo($empresa, $donoId, $membros, $termino, $ciclo, 'agendador', null);
+            }
+
             return null;
         }
 
-        $this->sincronizarTermino($ciclo);
+        $this->sincronizarTermino($ciclo, 'agendador', true, $hoje);
         $ciclo = $ciclo->fresh();
+
+        if ($ciclo->status_comercial === ContratoRenovacao::STATUS_COMERCIAL_DISPENSADO) {
+            return null;
+        }
 
         if ($ciclo->status_integracao === ContratoRenovacao::STATUS_INTEGRACAO_REVISAO_MANUAL) {
             return null;
@@ -211,12 +270,18 @@ class RenovacaoDetector
         return ($naJanela || $ciclo->negocio_renovacao_id !== null) ? $ciclo : null;
     }
 
+    private function dispensadoPorTerminoCorrigido(ContratoRenovacao $ciclo): bool
+    {
+        return $ciclo->status_comercial === ContratoRenovacao::STATUS_COMERCIAL_DISPENSADO
+            && $ciclo->dispensado_por === null
+            && $ciclo->negocio_renovacao_id === null
+            && str_starts_with((string) $ciclo->dispensa_justificativa, 'Término corrigido para ');
+    }
+
     private function criarCiclo(Company $empresa, int $donoId, Collection $membros, Carbon $termino, ?ContratoRenovacao $anterior, string $origem, ?int $userId): ContratoRenovacao
     {
         $numero = $anterior === null ? 1 : $anterior->numero_ciclo + 1;
-        $meses  = VigenciaContrato::mesesDoGrupo(
-            $membros->map(fn (ContratoServico $cs) => ['servico' => $cs->servico_id, 'parcelas' => $cs->parcelas()])
-        );
+        $meses  = $this->termino->mesesDeVigencia($empresa, $donoId, $membros);
 
         $atributos = [
             'ciclo_anterior_id'   => $anterior?->id,

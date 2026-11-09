@@ -4,6 +4,7 @@ namespace App\Services\Renovacao;
 
 use App\Models\ContratoRenovacao;
 use App\Models\ContratoServico;
+use App\Services\Contratos\TerminoContratoService;
 use App\Services\Contratos\VigenciaContrato;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +18,10 @@ use Illuminate\Support\Facades\Log;
  */
 class RenovacaoExtensaoService
 {
-    public function __construct(private RenovacaoDetector $detector) {}
+    public function __construct(
+        private RenovacaoDetector $detector,
+        private TerminoContratoService $termino,
+    ) {}
 
     /**
      * @return bool true quando estendeu; false quando ignorou ou foi para revisão manual
@@ -50,9 +54,8 @@ class RenovacaoExtensaoService
                 return false;
             }
 
-            $meses = VigenciaContrato::mesesDoGrupo(
-                $membros->map(fn (ContratoServico $cs) => ['servico' => $cs->servico_id, 'parcelas' => $cs->parcelas()])
-            );
+            // Fase 202-08: prazo do contrato assinado (Brigada P4M no HubSpot = 12 no contrato).
+            $meses = $this->termino->mesesDeVigencia($ciclo->company, (int) $ciclo->servico_id, $membros);
             $antes = $ciclo->termino_capturado;
             $novo  = VigenciaContrato::terminoPorMeses($antes->copy(), $meses);
 

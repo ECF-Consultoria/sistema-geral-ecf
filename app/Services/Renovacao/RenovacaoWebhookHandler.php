@@ -79,7 +79,7 @@ class RenovacaoWebhookHandler
 
             if ($etapa === (string) $cfg['stage_fechado_id']) {
                 // Término pode ter sido corrigido depois da detecção.
-                $this->detector->sincronizarTermino($ciclo->fresh(), 'webhook');
+                $this->detector->sincronizarTermino($ciclo->fresh(), 'webhook', false);
                 $this->extensao->registrarGanho($ciclo->fresh(), 'webhook', ['evento_id' => $evento->id]);
             } elseif ($etapa === (string) $cfg['stage_negociando_id']) {
                 if (! $final) {
