@@ -40,6 +40,7 @@ class RenovacaoOrquestradorTest extends TestCase
     private array $contatosDoOriginal = [];
     private array $contatosPorEmail = [];
     private array $empresasDoContato = [];
+    private bool $notaFalha = false;
 
     protected function setUp(): void
     {
@@ -81,6 +82,12 @@ class RenovacaoOrquestradorTest extends TestCase
             $url = $r->url();
             $m   = $r->method();
 
+            if ($m === 'POST' && str_ends_with($url, '/crm/v3/objects/notes')) {
+                return $this->notaFalha ? Http::response(['message' => 'erro'], 400) : Http::response(['id' => 'N1'], 201);
+            }
+            if ($m === 'PATCH' && preg_match('#/crm/v3/objects/deals/[^/]+$#', $url)) {
+                return Http::response(['id' => 'x'], 200);
+            }
             if ($m === 'POST' && str_ends_with($url, '/crm/v3/objects/contacts/search')) {
                 return Http::response(['results' => $this->contatosPorEmail]);
             }
@@ -174,7 +181,9 @@ class RenovacaoOrquestradorTest extends TestCase
         $this->assertSame($ciclo->chave_correlacao, $p['ecf_renovacao_chave']);
         $this->assertSame(self::ORIGINAL, $p['ecf_negocio_original_id']);
         $this->assertSame('99', $p['hubspot_owner_id']);
-        $this->assertStringContainsString('Renovação |', $p['dealname']);
+        $this->assertStringStartsWith('Renovação · ', $p['dealname']);
+        $this->assertStringContainsString('· Gestao · vence 10/01/2027', $p['dealname']);
+        $this->assertSame('2027-01-10T12:00:00Z', $p['closedate']);
         $this->assertArrayNotHasKey('amount', $p);
         $tipos = collect($req['associations'])->pluck('types.0.associationTypeId')->all();
         $this->assertSame([5, 3], $tipos);
@@ -304,6 +313,72 @@ class RenovacaoOrquestradorTest extends TestCase
         $this->artisan('renovacao:vincular-hubspot', ['--aplicar' => true, '--pausa-ms' => 0])->assertSuccessful();
         $this->assertSame('K-ORIG', $ciclo->company->fresh()->hubspot_contact_id);
         $this->assertSame(0, $this->posts());
+    }
+
+    // ─── 09/11/2026 — negócio legível + observação ───
+
+    private function postNota(): ?array
+    {
+        $r = Http::recorded(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/crm/v3/objects/notes'))->first();
+
+        return $r ? $r[0]->data() : null;
+    }
+
+    public function test_cria_observacao_com_a_situacao_do_contrato_associada_ao_negocio(): void
+    {
+        $this->fakeHubspot();
+        $ciclo = $this->cenario(['name' => 'Loja Teste', 'telefone' => '(11) 90000-0000', 'cnpj' => '11.222.333/0001-81']);
+
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $nota = $this->postNota();
+        $this->assertNotNull($nota);
+        $this->assertSame('D-NEW', $nota['associations'][0]['to']['id']);
+        $this->assertSame(214, $nota['associations'][0]['types'][0]['associationTypeId']);
+        $corpo = $nota['properties']['hs_note_body'];
+        $this->assertStringContainsString('Renovação de contrato — Loja Teste', $corpo);
+        $this->assertStringContainsString('10/01/2027', $corpo);
+        $this->assertStringContainsString('faltam <b>40 dias</b>', $corpo);
+        $this->assertStringContainsString('(11) 90000-0000', $corpo);
+        $this->assertStringContainsString('<b>Ganho</b>', $corpo);
+        $this->assertTrue($ciclo->eventos()->where('tipo', 'observacao_criada')->exists());
+
+        $req = Http::recorded(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/crm/v3/objects/deals'))->first()[0];
+        $this->assertSame('11.222.333/0001-81', $req['properties']['cnpj_da_empresa']);
+    }
+
+    public function test_falha_na_observacao_nao_desfaz_nem_repete_o_negocio(): void
+    {
+        $this->notaFalha = true;
+        $this->fakeHubspot();
+        $ciclo = $this->cenario();
+
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $this->assertSame(1, $this->posts());
+        $this->assertSame('D-NEW', $ciclo->fresh()->negocio_renovacao_id);
+        $this->assertSame(ContratoRenovacao::STATUS_INTEGRACAO_SINCRONIZADO, $ciclo->fresh()->status_integracao);
+        $this->assertTrue($ciclo->eventos()->where('tipo', 'observacao_falhou')->exists());
+    }
+
+    public function test_comando_atualizar_negocio_so_mexe_em_negocio_criado_pelo_sistema(): void
+    {
+        $this->fakeHubspot();
+        $ciclo = $this->cenario();
+        $ciclo->update(['negocio_renovacao_id' => 'D-DE-FORA', 'status_integracao' => ContratoRenovacao::STATUS_INTEGRACAO_SINCRONIZADO]);
+
+        $this->artisan('renovacao:atualizar-negocio', ['ciclo' => $ciclo->id])->assertFailed();
+        $this->assertSame(0, Http::recorded(fn (Request $r) => $r->method() === 'PATCH')->count());
+
+        $ciclo->update(['negocio_renovacao_id' => null, 'status_integracao' => ContratoRenovacao::STATUS_INTEGRACAO_PENDENTE]);
+        $this->orq()->sincronizar($ciclo, 'agendador', null, false);
+
+        $this->artisan('renovacao:atualizar-negocio', ['ciclo' => $ciclo->id])->assertSuccessful();
+        $patch = Http::recorded(fn (Request $r) => $r->method() === 'PATCH')->first()[0]->data();
+        $this->assertArrayHasKey('dealname', $patch['properties']);
+        $this->assertArrayNotHasKey('dealstage', $patch['properties']);
+        $this->assertArrayNotHasKey('pipeline', $patch['properties']);
     }
 
     public function test_empresa_sem_dono_nao_envia_hubspot_owner_id(): void

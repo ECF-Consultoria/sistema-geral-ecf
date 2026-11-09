@@ -33,6 +33,7 @@ class RenovacaoOrquestrador
         private RenovacaoDecisaoPolicy $politica,
         private RenovacaoExtensaoService $extensao,
         private VinculoHubspotResolver $vinculo,
+        private NegocioRenovacaoConteudo $conteudo,
     ) {}
 
     /**
@@ -302,6 +303,7 @@ class RenovacaoOrquestrador
         $this->log('info', "ciclo {$ciclo->id}: negócio {$deal['id']} criado", $ciclo);
 
         $this->completarAssociacaoEmpresa($ciclo->fresh());
+        $this->criarObservacao($ciclo->fresh(), $origem);
     }
 
     private function tratarErroCriacao(ContratoRenovacao $ciclo, HubspotErroApi $e, string $origem, ?int $userId, $anteriorInicio, int $anteriorTentativa, string $anteriorStatus): void
@@ -404,30 +406,22 @@ class RenovacaoOrquestrador
     {
         $cfg     = config('services.hubspot.renovacao');
         $company = $ciclo->company;
-        $servico = $ciclo->servico?->nome ?? ('serviço ' . $ciclo->servico_id);
-        $termino = $ciclo->termino_capturado->toDateString();
 
-        $descricao = "Renovação do contrato de {$servico} (término em {$termino}).\n"
-            . 'Contrato no ECF Admin: ' . route('admin.contratos.show', $company);
-
-        if ($ciclo->negocio_original_id !== null) {
-            $descricao .= "\nNegócio original: ";
-            $portal = config('services.hubspot.portal_id');
-            $descricao .= $portal
-                ? "https://app.hubspot.com/contacts/{$portal}/record/0-3/{$ciclo->negocio_original_id}"
-                : $ciclo->negocio_original_id;
-        }
-
-        $props = [
-            'dealname'                          => "Renovação | {$company->name} | contrato {$company->id}-{$ciclo->servico_id} | ciclo {$ciclo->numero_ciclo} | término {$termino}",
-            'pipeline'                          => (string) $cfg['pipeline_id'],
-            'dealstage'                         => (string) $cfg['stage_inicial_id'],
-            $cfg['propriedade_chave']           => $ciclo->chave_correlacao,
-            'description'                       => $descricao,
+        // 09/11/2026 — nome, data de fechamento, descrição e dados do cliente
+        // legíveis vêm de NegocioRenovacaoConteudo (pedido do usuário).
+        $props = $this->conteudo->propriedades($ciclo) + [
+            'pipeline'                => (string) $cfg['pipeline_id'],
+            'dealstage'               => (string) $cfg['stage_inicial_id'],
+            $cfg['propriedade_chave'] => $ciclo->chave_correlacao,
         ];
 
         if ($ciclo->negocio_original_id !== null) {
             $props[$cfg['propriedade_negocio_original']] = (string) $ciclo->negocio_original_id;
+            $portal = config('services.hubspot.portal_id');
+            $props['description'] .= "
+Negócio original: " . ($portal
+                ? "https://app.hubspot.com/contacts/{$portal}/record/0-3/{$ciclo->negocio_original_id}"
+                : $ciclo->negocio_original_id);
         }
         // Dono: só se a empresa tem — nunca inventa (D-04).
         if (filled($company->hubspot_owner_id)) {
@@ -435,6 +429,56 @@ class RenovacaoOrquestrador
         }
 
         return $props;
+    }
+
+    /**
+     * 09/11/2026 — observação (Note) com a situação do contrato. Falha aqui
+     * NÃO desfaz nem repete o negócio: fica registrada no ciclo e no log, e
+     * `renovacao:atualizar-negocio` refaz depois.
+     */
+    public function criarObservacao(ContratoRenovacao $ciclo, string $origem = 'sistema'): ?string
+    {
+        if (! $ciclo->negocio_renovacao_id) {
+            return null;
+        }
+
+        try {
+            $notaId = $this->hubspot->criarNotaNoDeal((string) $ciclo->negocio_renovacao_id, $this->conteudo->observacao($ciclo));
+            $ciclo->registrarEvento('observacao_criada', $origem, null, [
+                'negocio_renovacao_id' => $ciclo->negocio_renovacao_id,
+                'nota_id'              => $notaId,
+            ]);
+
+            return $notaId;
+        } catch (HubspotErroApi $e) {
+            $this->log('error', "ciclo {$ciclo->id}: negócio criado, mas a observação falhou: " . mb_substr($e->getMessage(), 0, 300), $ciclo);
+            $ciclo->registrarEvento('observacao_falhou', $origem, null, [
+                'negocio_renovacao_id' => $ciclo->negocio_renovacao_id,
+                'erro'                 => mb_substr($e->getMessage(), 0, 300),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * 09/11/2026 — reaplica nome/descrição/data/dados do cliente num negócio
+     * que o PRÓPRIO sistema criou (sem tocar em etapa, pipeline ou dono) e
+     * acrescenta a observação. Usado por `renovacao:atualizar-negocio` para o
+     * primeiro negócio criado antes desta mudança.
+     *
+     * @throws HubspotErroApi
+     */
+    public function reaplicarConteudo(ContratoRenovacao $ciclo, string $origem = 'comando'): ?string
+    {
+        $props = $this->conteudo->propriedades($ciclo);
+        $this->hubspot->atualizarPropriedadesDoDeal((string) $ciclo->negocio_renovacao_id, $props);
+        $ciclo->registrarEvento('negocio_atualizado', $origem, null, [
+            'negocio_renovacao_id' => $ciclo->negocio_renovacao_id,
+            'propriedades'         => array_keys($props),
+        ]);
+
+        return $this->criarObservacao($ciclo, $origem);
     }
 
     private function resumoDeal(array $deal): array

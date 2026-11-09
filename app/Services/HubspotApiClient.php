@@ -846,6 +846,67 @@ class HubspotApiClient
     }
 
     /**
+     * Renovação (09/11/2026) — cria uma OBSERVAÇÃO (Note) no negócio.
+     * POST /crm/v3/objects/notes associada ao deal (tipo 214 note_to_deal).
+     * SEM retry (criação): quem chama trata a falha sem desfazer o negócio.
+     *
+     * @throws HubspotErroApi
+     */
+    public function criarNotaNoDeal(string $dealId, string $html): string
+    {
+        try {
+            $res = $this->requisicao()->post(self::BASE . '/crm/v3/objects/notes', [
+                'properties'   => [
+                    'hs_timestamp' => now()->utc()->format('Y-m-d\TH:i:s.v\Z'),
+                    'hs_note_body' => $html,
+                ],
+                'associations' => [[
+                    'to'    => ['id' => $dealId],
+                    'types' => [['associationCategory' => 'HUBSPOT_DEFINED', 'associationTypeId' => 214]],
+                ]],
+            ]);
+        } catch (ConnectionException $e) {
+            throw new HubspotErroApi('[Renovacao] criarNotaNoDeal: sem conexão', HubspotErroApi::INCERTO, null, null, $e);
+        }
+
+        if ($res->status() === 201 || $res->status() === 200) {
+            return (string) $res->json('id');
+        }
+
+        throw new HubspotErroApi(
+            "[Renovacao] criarNotaNoDeal: HubSpot {$res->status()}: " . $this->corpoResumido($res),
+            $res->status() === 429 ? HubspotErroApi::LIMITE : HubspotErroApi::PERMANENTE,
+            $res->status()
+        );
+    }
+
+    /**
+     * Renovação (09/11/2026) — PATCH das propriedades de um negócio de
+     * renovação criado pelo próprio sistema (nome, descrição, data...).
+     * Nunca usado para etapa/pipeline nem para negócio de outra origem.
+     *
+     * @throws HubspotErroApi
+     */
+    public function atualizarPropriedadesDoDeal(string $dealId, array $properties): void
+    {
+        try {
+            $res = $this->requisicao()->patch(self::BASE . "/crm/v3/objects/deals/{$dealId}", [
+                'properties' => $properties,
+            ]);
+        } catch (ConnectionException $e) {
+            throw new HubspotErroApi('[Renovacao] atualizarPropriedadesDoDeal: sem conexão', HubspotErroApi::TEMPORARIO, null, null, $e);
+        }
+
+        if ($res->status() >= 400) {
+            throw new HubspotErroApi(
+                "[Renovacao] atualizarPropriedadesDoDeal: HubSpot {$res->status()}: " . $this->corpoResumido($res),
+                HubspotErroApi::PERMANENTE,
+                $res->status()
+            );
+        }
+    }
+
+    /**
      * Renovação (09/11/2026) — contatos com este e-mail exato.
      * POST /crm/v3/objects/contacts/search (leitura; pode repetir).
      *
