@@ -756,6 +756,14 @@ Schedule::command('bling:estoque')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/bling.log'));
 
+// Fase 202-08 — lê os contratos ASSINADOS da Clicksign (prazo + data da assinatura), fonte da verdade do
+// término. Só grava na tabela do acervo; incremental. 07:05, antes do `renovacao:verificar` (07:35).
+Schedule::command('contratos:ler-clicksign')
+    ->dailyAt('07:05')
+    ->timezone('America/Sao_Paulo')
+    ->name('contratos-ler-clicksign')
+    ->withoutOverlapping();
+
 // Fase 202 — renovação contratual: verificação diária dos contratos na janela de renovação. O próprio
 // comando respeita a chave `renovacao_automatica_ativa` (nasce DESLIGADA) e o modo simulação; cada ciclo
 // vira um job na fila `high`. 07:35 fica fora do minuto 06:00 (o `adman:warm-diff` segura aquele minuto).
