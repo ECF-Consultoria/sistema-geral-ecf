@@ -742,6 +742,29 @@ fixo no ciclo de 10 dias úteis (Seg A … Sex B; Seg A = semana de 26/10/2026, 
 - Marcar "feito" sem texto grava só a revisão (`polos_revisoes`), sem comentário padrão —
   um "Revisado sem alterações" apagaria o aviso "Desatualizado" ("sem bônus" × saldo na Adman).
 
+### 19.1 Analista de Conta: trabalho em paralelo, e a fila de revisão só LÊ as pendências (TKT-0035, 11/11/2026)
+
+`/mlb/polos-painel/analista-conta` (`PendenciasContaPolos`, tabelas `polos_pendencias_conta*`):
+o analista de Ads encaminha, pelo cartão da fila de revisão, uma pendência que o Analista de
+Conta resolve na conta do seller. Fatia 1 da DEV-58; agenda semanal (fatia 2) e painel da
+coordenação (fatia 3) ainda não existem.
+
+- **Não é divisão de carteira** (regra do ticket). Nada do módulo escreve em `mlb_empresas`,
+  `mlb_implementacoes`, `polos_revisoes` ou `polos_agenda_revisao`; o `PolosFilaController`
+  monta a fila ANTES e só junta as pendências na prop `pendenciasConta`. O teste
+  `test_revisao_e_carteira_dao_o_mesmo_resultado_antes_e_depois_de_criar_e_concluir` compara
+  a fila e a carteira inteiras antes e depois — se ele quebrar, alguém fez a pendência mexer
+  na revisão.
+- **O papel é a chave `mlb.analista_conta`, sem `mlb.faturamento_polos`.** Quem só tem o papel
+  não abre a fila de revisão nem o Faturamento (é de propósito: não herda carteira). Para dar o
+  papel a alguém: um setor com essa chave e a pessoa nele. Em 11/11 havia dois "Bruno" (#26 e
+  #44) e ninguém confirmou qual é o Analista de Conta — a chave ainda não foi dada a ninguém.
+- **Coordenação = admin** (decisão de 11/11, sem permissão própria).
+- **`data_planejada` já existe na tabela** desde a fatia 1, para a agenda semanal não precisar
+  de migration em tabela com dado em produção. Não crie outra coluna para isso.
+- **Devolvida volta para Aberta sozinha** quando quem pediu comenta (como o ticket faz com a
+  resposta do solicitante). Prazo pedido é obrigatório no formulário e não aceita data passada.
+
 ## 20. A virada reescrevia o mês passado DE NOVO — por uma janela que o §12 não fechou (03/11/2026)
 
 Queixa: "mês passado era ~59% da meta e agora dá 40 e pouco". O número era o **% no alvo**

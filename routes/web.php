@@ -71,6 +71,7 @@ use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosFilaController;
+use App\Http\Controllers\PolosPendenciaContaController;
 use App\Http\Controllers\PolosPpaController;
 use App\Http\Controllers\BonusAuditoriaController;
 use App\Http\Controllers\RelatorioBonificacaoController;
@@ -1759,6 +1760,15 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/fila/agenda',             [PolosFilaController::class, 'salvarAgenda'])->name('polos-painel.fila.agenda.salvar');
     Route::post('/polos-painel/fila/revisoes',           [PolosFilaController::class, 'marcar'])->name('polos-painel.fila.revisoes.marcar');
     Route::delete('/polos-painel/fila/revisoes/{empresa}', [PolosFilaController::class, 'desmarcar'])->name('polos-painel.fila.revisoes.desmarcar');
+    // Analista de Conta (TKT-0035): pendências encaminhadas pela fila de revisão, em paralelo à
+    // carteira do responsável. Gates no controller (ver, operar, encaminhar — PendenciasContaPolos).
+    Route::get('/polos-painel/analista-conta',                                [PolosPendenciaContaController::class, 'index'])->name('polos-painel.analista-conta');
+    Route::post('/polos-painel/pendencias-conta',                             [PolosPendenciaContaController::class, 'store'])->name('polos-painel.pendencias-conta.store');
+    Route::post('/polos-painel/pendencias-conta/{pendencia}/status',          [PolosPendenciaContaController::class, 'status'])->name('polos-painel.pendencias-conta.status');
+    Route::post('/polos-painel/pendencias-conta/{pendencia}/concluir',        [PolosPendenciaContaController::class, 'concluir'])->name('polos-painel.pendencias-conta.concluir');
+    Route::post('/polos-painel/pendencias-conta/{pendencia}/comentarios',     [PolosPendenciaContaController::class, 'comentar'])->name('polos-painel.pendencias-conta.comentar');
+    Route::get('/polos-painel/pendencias-conta/{pendencia}/anexos/{anexo}',   [PolosPendenciaContaController::class, 'anexo'])->name('polos-painel.pendencias-conta.anexo');
+    Route::get('/polos-painel/pendencias-conta/empresa/{empresa}',            [PolosPendenciaContaController::class, 'daEmpresa'])->name('polos-painel.pendencias-conta.empresa');
     // Edição em MASSA do Painel (JSON; mesmo gate operacional de painel()).
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Baixar o Painel como planilha .xlsx (colunas + AutoFiltro). POST porque o front

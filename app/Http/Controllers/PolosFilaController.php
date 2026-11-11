@@ -6,6 +6,7 @@ use App\Models\MlbEmpresa;
 use App\Models\PolosAgendaRevisao;
 use App\Models\User;
 use App\Services\Polos\FilaRevisaoPolos;
+use App\Services\Polos\PendenciasContaPolos;
 use App\Support\CustId;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ use Inertia\Response;
  */
 class PolosFilaController extends Controller
 {
-    public function __construct(private FilaRevisaoPolos $fila) {}
+    public function __construct(private FilaRevisaoPolos $fila, private PendenciasContaPolos $pendencias) {}
 
     public function index(Request $request): Response
     {
@@ -32,13 +33,20 @@ class PolosFilaController extends Controller
         $analistaId = $this->analistaDaTela($request, $analistas);
         [$faturamento, $aviso] = $this->faturamento();
 
+        // PPA da empresa no cartão (TKT-0033): mesmo gate do PPA Polos (permission:mlb.projetos).
+        $fila = $this->fila->montar($analistaId, now(), $faturamento, $user->hasPermission('mlb.projetos'));
+        $ids  = array_column([...$fila['pendentes'], ...$fila['feitas'], ...$fila['em_dia']], 'id');
+
         return Inertia::render('Polos/Fila/Index', [
             'analistas'        => $this->analistasVisiveis($user, $analistas),
             'analistaId'       => $analistaId,
             'podeTrocar'       => $user->isAdmin(),
-            // PPA da empresa no cartão (TKT-0033): mesmo gate do PPA Polos (permission:mlb.projetos).
-            'fila'             => $this->fila->montar($analistaId, now(), $faturamento, $user->hasPermission('mlb.projetos')),
+            'fila'             => $fila,
             'avisoFaturamento' => $aviso,
+            // Analista de Conta (TKT-0035): só LÊ as pendências de cada empresa — a fila acima é
+            // montada antes e sem elas, para a revisão e a carteira não mudarem com pendência.
+            'pendenciasConta'  => $this->pendencias->daEmpresas($ids, now()),
+            'analistaConta'    => ['minhas_abertas' => $this->pendencias->abertasDe($user), 'opcoes' => PendenciasContaPolos::opcoes()],
         ]);
     }
 

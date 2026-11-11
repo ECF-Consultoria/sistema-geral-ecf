@@ -88,6 +88,13 @@ class Permissions
     public const MLB_JARDINAGEM            = 'mlb.jardinagem';
     /** Ver o Faturamento Polos (dados financeiros por polo). Escopado ao setor Polos — não vaza via mlb.projetos. */
     public const MLB_FATURAMENTO_POLOS     = 'mlb.faturamento_polos';
+    /**
+     * 11/11/2026 (TKT-0035) — papel "Analista de Conta" dos Polos: opera a fila das pendências que os
+     * analistas de Ads encaminham pela fila de revisão (mudar status, comentar, concluir). Chave PRÓPRIA:
+     * o papel trabalha em paralelo à carteira, não a herda — não dá o Faturamento Polos nem a fila de
+     * revisão, e dar a outro usuário é só pôr a pessoa num setor com esta chave.
+     */
+    public const MLB_ANALISTA_CONTA        = 'mlb.analista_conta';
 
     /** Aba Empresas do marketplace Shopee — listagem enxuta + atribuição p/ NPS. */
     public const SHOPEE_EMPRESAS           = 'shopee.empresas';
@@ -213,6 +220,7 @@ class Permissions
                 ['key' => self::MLB_ALAVANCAS,     'label' => 'Pub · Alavancas pós-publicação', 'description' => 'Ver e operar a fila de publicados aguardando alavancas (pegar, marcar o checklist, concluir); escrever no Mercado Livre segue só para admin'],
                 ['key' => self::MLB_JARDINAGEM,    'label' => 'Pub · Jardinagem',     'description' => 'Ver e operar a Jardinagem mensal dos publicados (árvore do MAG): checklist do diagnóstico e título da nova oferta; nada é escrito no Mercado Livre'],
                 ['key' => self::MLB_FATURAMENTO_POLOS, 'label' => 'Pub · Faturamento Polos', 'description' => 'Ver a página Faturamento Polos (financeiro por polo) — libera o setor Polos sem depender de admin'],
+                ['key' => self::MLB_ANALISTA_CONTA, 'label' => 'Pub · Analista de Conta (Polos)', 'description' => 'Operar a fila das pendências encaminhadas pela fila de revisão dos Polos: mudar status, comentar e concluir. Não mexe na carteira nem na revisão de ninguém'],
             ],
             'Shopee' => [
                 ['key' => self::SHOPEE_EMPRESAS, 'label' => 'Shopee · Empresas', 'description' => 'Empresas atendidas na Shopee (habilita NPS)'],

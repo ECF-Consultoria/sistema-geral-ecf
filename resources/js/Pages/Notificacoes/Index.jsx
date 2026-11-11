@@ -14,7 +14,7 @@
 //   - Botão "Marcar como lida" inline em cada card unread.
 //   - Footer simples de paginação (Página X de Y) — quando há mais de 1.
 import { Head, Link, router } from '@inertiajs/react';
-import { Mail, Target, CheckCircle2, PlusCircle, ArrowUpDown, Ticket, Zap } from 'lucide-react';
+import { Mail, Target, CheckCircle2, PlusCircle, ArrowUpDown, Ticket, Zap, UserCog } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import AppLayout from '@/Layouts/AppLayout';
@@ -34,6 +34,8 @@ const CATEGORIA_META = {
     chamado:        { Icon: Ticket,       color: 'text-sky-400',    label: 'Ticket' },
     // 09/10/2026 — produto publicado pelo Publicador aguardando as alavancas.
     tarefa_alavancas: { Icon: Zap,        color: 'text-amber-300',  label: 'Alavancas' },
+    // 11/11/2026 (TKT-0035) — pendência do Analista de Conta dos Polos: concluída, devolvida, comentada.
+    pendencia_conta:  { Icon: UserCog,    color: 'text-emerald-300', label: 'Analista de Conta' },
 };
 
 function Index({ notificacoes, aba, can_criar }) {

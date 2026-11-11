@@ -8,7 +8,7 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound, Ticket, Megaphone, Zap, Truck,
+    MessageSquareText, UsersRound, Ticket, Megaphone, Zap, Truck, UserCog,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { itemOcultoPorPapel } from '@/lib/visibilidadeMenu';
@@ -139,6 +139,9 @@ const NAV_TREE = [
             // Fila de revisão quinzenal por responsável (TKT-0027). Mesmo gate do Faturamento:
             // a fila mostra faturamento e bônus e grava comentário lá.
             { label: 'Fila de revisão',   routeName: 'mlb.polos-painel.fila',   page: 'Polos/Fila',         icon: ClipboardCheck, permission: 'mlb.faturamento_polos' },
+            // Analista de Conta (TKT-0035): quem opera (mlb.analista_conta) e quem encaminha pela
+            // fila de revisão, que acompanha o que pediu. O papel não dá o Faturamento Polos.
+            { label: 'Analista de Conta', routeName: 'mlb.polos-painel.analista-conta', page: 'Polos/AnalistaConta', icon: UserCog, permission: ['mlb.analista_conta', 'mlb.faturamento_polos'] },
         ],
     },
 

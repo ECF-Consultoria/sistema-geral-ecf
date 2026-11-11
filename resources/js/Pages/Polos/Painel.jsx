@@ -29,6 +29,7 @@ import AdsCard from './components/AdsCard';
 import M1Card from './components/M1Card';
 import SparkSemanal from './components/SparkSemanal';
 import PpasDaEmpresa from './components/PpasDaEmpresa';
+import PendenciasContaDaEmpresa from './components/PendenciasConta';
 import { montarCorDoPolo } from './components/poloCores';
 import { corEstagio } from './components/estagioBadge';
 import { corAds } from './components/adsCor';
@@ -736,6 +737,7 @@ export default function PolosPainel({
     const [editNota, setEditNota]     = useState({});
     const [semanal, setSemanal]       = useState({});   // `${cust_id}|${mes}` -> { semanas, total, totalAds, loading, erro }
     const [ppas, setPpas]             = useState({});   // mlb_empresa_id -> { lista, loading, erro }
+    const [pendencias, setPendencias] = useState({});   // mlb_empresa_id -> { lista, loading, erro } (Analista de Conta, TKT-0035)
 
     // ── Financeiro (admin) — carregado async, separado do payload operacional ──
     const [mes, setMes]           = useState(null);   // null = mês default do backend
@@ -1166,12 +1168,22 @@ export default function PolosPainel({
             .catch(() => setPpas((s) => ({ ...s, [e.id]: { ...s[e.id], loading: false, erro: true } })));
     };
 
+    // Pendências do Analista de Conta (TKT-0035): o histórico na ficha, buscado como os PPAs.
+    const carregarPendencias = (e) => {
+        setPendencias((s) => ({ ...s, [e.id]: { ...s[e.id], loading: true, erro: false } }));
+        fetch(route('mlb.polos-painel.pendencias-conta.empresa', e.id), { headers: { Accept: 'application/json' } })
+            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+            .then((d) => setPendencias((s) => ({ ...s, [e.id]: { lista: d.pendencias ?? [], loading: false } })))
+            .catch(() => setPendencias((s) => ({ ...s, [e.id]: { ...s[e.id], loading: false, erro: true } })));
+    };
+
     const toggleExpandir = (e) => {
         const abrindo = expandida !== e.id;
         setExpandida(abrindo ? e.id : null);
         if (abrindo) {
             carregarSemanal(e);
             carregarPpas(e);
+            carregarPendencias(e);
         }
     };
     // Mês trocado com uma gaveta aberta: busca o semanal do mês novo para ela.
@@ -1679,6 +1691,7 @@ export default function PolosPainel({
                                     adsLimites={adsLimites}
                                     semanal={e.cust_id ? semanal[chaveSemanal(e.cust_id)] : null}
                                     ppas={ppas[e.id]}
+                                    pendencias={pendencias[e.id]}
                                     aberta={expandida === e.id}
                                     notaEdit={editNota[e.id]}
                                     setEditNota={setEditNota}
@@ -2079,7 +2092,7 @@ function SeloDecolaMl() {
 // memo(): sem ele, qualquer estado do painel (uma tecla na busca, uma caixa marcada, uma
 // célula salva) redesenhava as ~180 linhas x ~32 colunas. Com as props estáveis acima, só a
 // linha que de fato mudou é redesenhada.
-const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, ppas, aberta, notaEdit, setEditNota, on }) {
+const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, ppas, pendencias, aberta, notaEdit, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
@@ -2332,6 +2345,8 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
                             </div>
                             {/* PPAs gerados para a empresa (PPA Polos + carteira, se vinculada) */}
                             <PpasDaEmpresa estado={ppas} />
+                            {/* Histórico das pendências do Analista de Conta (TKT-0035) */}
+                            <PendenciasContaDaEmpresa estado={pendencias} />
                         </div>
                     </td>
                 </tr>

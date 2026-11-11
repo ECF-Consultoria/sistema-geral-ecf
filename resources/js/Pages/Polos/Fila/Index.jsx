@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, AlertTriangle, Info, MessageSquareText, CalendarClock, Search, X,
-         Megaphone, MegaphoneOff, ClipboardList } from 'lucide-react';
+         Megaphone, MegaphoneOff, ClipboardList, UserCog, Send } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { ORDENS, FILTRO_BONUS, FILTRO_ATENCAO, FILTRO_CAMPANHA, FILTROS_PADRAO, aplicarFiltros } from '@/lib/polosFila';
 import { PpaCompacto } from '../components/PpasDaEmpresa';
+import { EncaminharDialog, PendenciaCompacta } from '../components/PendenciasConta';
 
 // Selo da situação na fila (TKT-0027).
 const SITUACAO = {
@@ -52,8 +53,12 @@ const corMeta = (pct) => (pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-ecf-ye
  *
  * TKT-0033: o cartão mostra a campanha (o selo Ligado/Desligado do Faturamento Polos), o gasto
  * de publicidade do mês e os PPAs da empresa; ordena por consumo de publicidade e filtra por campanha.
+ *
+ * TKT-0035: cada cartão mostra as pendências da empresa com o Analista de Conta (em aberto e as
+ * concluídas há até 15 dias) e o botão para encaminhar uma nova. A fila acima não muda com elas.
  */
-export default function FilaIndex({ analistas = [], analistaId = null, podeTrocar = false, fila = null, avisoFaturamento = null }) {
+export default function FilaIndex({ analistas = [], analistaId = null, podeTrocar = false, fila = null, avisoFaturamento = null,
+                                    pendenciasConta = {}, analistaConta = null }) {
     const resumo    = fila?.resumo ?? {};
     const hoje      = fila?.hoje ?? {};
     const pendentes = fila?.pendentes ?? [];
@@ -111,8 +116,16 @@ export default function FilaIndex({ analistas = [], analistaId = null, podeTroca
                     )) : (
                         <span className="rounded-full bg-ecf-yellow px-3 py-1 text-xs font-semibold text-black">{analista?.nome ?? 'Você'}</span>
                     )}
-                    <Link href={route('mlb.polos-painel.fila.agenda', podeTrocar ? { analista: analistaId } : {})}
+                    <Link href={route('mlb.polos-painel.analista-conta', { minhas: 1 })}
+                          title="Pendências que você encaminhou ao Analista de Conta"
                           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
+                        <UserCog size={13} /> Analista de Conta
+                        {(analistaConta?.minhas_abertas ?? 0) > 0 && (
+                            <span className="rounded-full bg-ecf-yellow/15 px-1.5 text-[10.5px] tabular-nums text-ecf-yellow">{analistaConta.minhas_abertas} em aberto</span>
+                        )}
+                    </Link>
+                    <Link href={route('mlb.polos-painel.fila.agenda', podeTrocar ? { analista: analistaId } : {})}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
                         <CalendarDays size={13} /> Configurar agenda
                     </Link>
                 </div>
@@ -206,7 +219,7 @@ export default function FilaIndex({ analistas = [], analistaId = null, podeTroca
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {lista.map((e) => <CartaoEmpresa key={e.id} e={e} />)}
+                        {lista.map((e) => <CartaoEmpresa key={e.id} e={e} pendencias={pendenciasConta[e.id] ?? []} opcoesPendencia={analistaConta?.opcoes} />)}
                     </div>
                 )}
 
@@ -387,8 +400,9 @@ function Caixa({ marcado, ocupado, onClick, titulo }) {
     );
 }
 
-function CartaoEmpresa({ e }) {
+function CartaoEmpresa({ e, pendencias = [], opcoesPendencia = null }) {
     const [texto, setTexto] = useState('');
+    const [encaminhando, setEncaminhando] = useState(false);
     const [ocupado, setOcupado] = useState(false);
     const [erro, setErro] = useState(null);
 
@@ -453,6 +467,25 @@ function CartaoEmpresa({ e }) {
                     {e.ppas.length === 0
                         ? <span className="text-white/35 text-[11px]">Nenhum PPA para esta empresa</span>
                         : e.ppas.map((p) => <PpaCompacto key={p.id} p={p} />)}
+                </div>
+            )}
+
+            {/* Analista de Conta (TKT-0035): trabalho em paralelo — a empresa segue nesta fila. */}
+            {opcoesPendencia && (
+                <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3 md:pl-[3.25rem]">
+                    <span className="mr-0.5 inline-flex items-center gap-1 text-white/35 text-[10px] font-semibold uppercase tracking-wider">
+                        <UserCog size={11} /> Analista de Conta
+                    </span>
+                    {pendencias.length === 0
+                        ? <span className="text-white/35 text-[11px]">Nenhuma pendência</span>
+                        : pendencias.map((p) => <PendenciaCompacta key={p.id} p={p} />)}
+                    <button type="button" onClick={() => setEncaminhando(true)}
+                            className="ml-auto inline-flex items-center gap-1 rounded-md border border-white/[0.1] px-2 py-0.5 text-[11px] font-semibold text-white/60 transition hover:border-ecf-yellow/40 hover:text-ecf-yellow">
+                        <Send size={11} /> Encaminhar para Analista de Conta
+                    </button>
+                    {encaminhando && (
+                        <EncaminharDialog empresa={e} opcoes={opcoesPendencia} aberto onFechar={() => setEncaminhando(false)} />
+                    )}
                 </div>
             )}
 

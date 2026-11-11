@@ -42,4 +42,7 @@ enum Categoria: string
 
     /** Produto publicado pelo Publicador aguardando as alavancas — a tarefa pós-publicação (09/10/2026). */
     case TAREFA_ALAVANCAS = 'tarefa_alavancas';
+
+    /** Movimento numa pendência do Analista de Conta dos Polos: concluída, devolvida, cancelada, comentada (TKT-0035, 11/11/2026). */
+    case PENDENCIA_CONTA = 'pendencia_conta';
 }
