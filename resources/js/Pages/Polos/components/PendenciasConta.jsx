@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { ExternalLink, Paperclip, RefreshCw, Send, UserCog } from 'lucide-react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { BarChart3, CalendarClock, CalendarDays, ExternalLink, ListTodo, Paperclip, RefreshCw, Send, UserCog } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +60,72 @@ export function SeloPrazo({ p }) {
 }
 
 /**
+ * O dia planejado pelo Analista de Conta (fatia 2): "Bruno vai fazer em 16/11". Fica em destaque
+ * quando passa do prazo pedido; quando o dia passou sem concluir, "ficou para trás".
+ */
+export function SeloPlanejada({ p, curto = false }) {
+    if (p.encerrada || !p.data_planejada) return null;
+    if (p.para_tras) {
+        return (
+            <span title="O dia planejado passou e a pendência não foi concluída"
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded bg-amber-400/10 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-300">
+                <CalendarClock size={11} /> Ficou para trás · era {p.data_planejada}
+            </span>
+        );
+    }
+    return (
+        <span title={p.depois_do_prazo ? `Planejada para depois do prazo pedido (${p.prazo})` : 'Dia planejado pelo Analista de Conta'}
+              className={cn('inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10.5px] font-semibold',
+                  p.depois_do_prazo ? 'bg-red-500/10 text-red-300' : 'bg-white/[0.05] text-white/65')}>
+            <CalendarClock size={11} />
+            {curto ? `em ${p.data_planejada}` : `${p.analista ?? 'Analista de Conta'} vai fazer em ${p.data_planejada}`}
+            {p.depois_do_prazo && !curto && <span className="font-normal opacity-80">· depois do prazo</span>}
+        </span>
+    );
+}
+
+/** Prioridade editável — quem pediu sobe para pedir antecipação; o Analista de Conta ajusta. */
+export function SeletorPrioridade({ p, opcoes }) {
+    const [ocupado, setOcupado] = useState(false);
+    const mudar = (valor) => {
+        if (valor === p.prioridade) return;
+        setOcupado(true);
+        router.post(route('mlb.polos-painel.pendencias-conta.prioridade', p.id), { prioridade: valor }, {
+            preserveScroll: true, preserveState: true, onFinish: () => setOcupado(false),
+        });
+    };
+    return (
+        <select value={p.prioridade} disabled={ocupado} onChange={(e) => mudar(e.target.value)} aria-label="Prioridade da pendência"
+                title="Mudar a prioridade avisa quem está do outro lado"
+                className={cn('cursor-pointer appearance-none rounded border-0 px-1.5 py-0.5 text-[10.5px] font-semibold outline-none disabled:opacity-50',
+                    PRIORIDADE_PENDENCIA[p.prioridade])}>
+            {opcoes.map((o) => <option key={o.valor} value={o.valor} className="bg-ecf-card text-white">{o.rotulo}</option>)}
+        </select>
+    );
+}
+
+const ABAS = [
+    { chave: 'fila',           rotulo: 'Fila',           rota: 'mlb.polos-painel.analista-conta',                Icone: ListTodo },
+    { chave: 'agenda',         rotulo: 'Agenda',         rota: 'mlb.polos-painel.analista-conta.agenda',         Icone: CalendarDays },
+    { chave: 'acompanhamento', rotulo: 'Acompanhamento', rota: 'mlb.polos-painel.analista-conta.acompanhamento', Icone: BarChart3 },
+];
+
+/** Fila · Agenda · Acompanhamento — o acompanhamento só para coordenação e liderança. */
+export function AbasAnalistaConta({ atual, podeAcompanhar = false }) {
+    return (
+        <nav className="flex flex-wrap items-center gap-1.5" aria-label="Analista de Conta">
+            {ABAS.filter((a) => a.chave !== 'acompanhamento' || podeAcompanhar).map(({ chave, rotulo, rota, Icone }) => (
+                <Link key={chave} href={route(rota)} aria-current={chave === atual ? 'page' : undefined}
+                      className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition',
+                          chave === atual ? 'bg-white/[0.1] text-white' : 'text-white/50 hover:bg-white/[0.05] hover:text-white/80')}>
+                    <Icone size={13} /> {rotulo}
+                </Link>
+            ))}
+        </nav>
+    );
+}
+
+/**
  * Uma pendência numa linha — o cartão da fila de revisão. O detalhe (descrição, quem pediu, o que
  * foi feito) vai no hover; o histórico mora na fila do Analista de Conta, aberta pelo clique.
  */
@@ -76,9 +142,14 @@ export function PendenciaCompacta({ p }) {
            className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md bg-white/[0.03] px-2 py-0.5 text-[11px] ring-1 ring-inset ring-white/[0.06] transition hover:bg-white/[0.06] hover:ring-ecf-yellow/25">
             <span className="shrink-0 font-semibold text-white/80 group-hover:text-white">{p.tipo_label}</span>
             <SeloStatus p={p} />
-            {p.status === 'concluida'
-                ? <span className="min-w-0 max-w-[18rem] truncate text-white/50">{p.concluida_em?.slice(0, 5)} · {p.conclusao}</span>
-                : <SeloPrazo p={p} />}
+            {p.status === 'concluida' ? (
+                <span className="min-w-0 max-w-[18rem] truncate text-white/50">{p.concluida_em?.slice(0, 5)} · {p.conclusao}</span>
+            ) : (
+                <>
+                    {(!p.data_planejada || p.atrasada) && <SeloPrazo p={p} />}
+                    <SeloPlanejada p={p} />
+                </>
+            )}
         </a>
     );
 }
@@ -303,6 +374,7 @@ function CardPendencia({ p }) {
                 <SeloStatus p={p} />
                 <SeloPrioridade p={p} />
                 <SeloPrazo p={p} />
+                <SeloPlanejada p={p} />
             </div>
             <p className="mt-1 line-clamp-3 whitespace-pre-line text-[12px] text-white/60" title={p.descricao}>{p.descricao}</p>
             <ListaMlbs mlbs={p.mlbs} className="mt-1" />

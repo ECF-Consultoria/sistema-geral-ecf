@@ -4,15 +4,22 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, Eye, MessageSquareText, Paperclip, RotateCcw, Search, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { CLASSE_ENTRADA, Campo, Historico, ListaMlbs, SeloPrazo, SeloPrioridade, SeloStatus } from '../components/PendenciasConta';
+import { AbasAnalistaConta, CLASSE_ENTRADA, Campo, Historico, ListaMlbs, SeletorPrioridade, SeloPlanejada, SeloPrazo, SeloPrioridade,
+         SeloStatus } from '../components/PendenciasConta';
 
 // Inertia: filtros e o que está aberto sobrevivem a cada gravação (a página recarrega só as props).
 const OPCOES_GRAVAR = { preserveScroll: true, preserveState: true };
 
+// "Para hoje" (fatia 2) = planejadas para hoje + as que ficaram para trás + atrasadas sem dia.
 const VISOES = [
-    { key: 'abertas',    label: 'Em aberto' },
+    { key: 'hoje',       label: 'Para hoje' },
+    { key: 'abertas',    label: 'Todas em aberto' },
     { key: 'encerradas', label: 'Encerradas (30 dias)' },
 ];
+
+const soParaHoje = (empresas) => empresas
+    .map((e) => ({ ...e, pendencias: e.pendencias.filter((p) => p.para_hoje) }))
+    .filter((e) => e.pendencias.length > 0);
 
 const FILTROS_PADRAO = { busca: '', solicitante: 'todos', tipo: 'todos', status: 'todos', fase: 'todas', atrasadas: false };
 
@@ -41,9 +48,9 @@ function filtrar(empresas, f) {
  *
  * Quem opera (`mlb.analista_conta` ou admin) muda o status, comenta e conclui com o que foi feito.
  * Os analistas de Ads abrem a mesma tela só para acompanhar o que encaminharam — a empresa segue
- * na carteira e na revisão deles normalmente.
+ * na carteira e na revisão deles normalmente. Quem opera abre em "Para hoje" (fatia 2).
  */
-export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = false, eu = null, foco = null, minhas = false }) {
+export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = false, podeAcompanhar = false, eu = null, foco = null, minhas = false }) {
     const { auth } = usePage().props;
     const veRevisao = (auth?.permissions ?? []).includes('mlb.faturamento_polos');
 
@@ -51,14 +58,18 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
     const abertas    = fila?.abertas ?? [];
     const encerradas = fila?.encerradas ?? [];
 
+    const paraHoje = useMemo(() => soParaHoje(abertas), [abertas]);
+
     // Aviso do sino (?pendencia=ID): abre na visão onde a pendência está, sem filtro.
     const focoEncerrada = !!foco && encerradas.some((e) => e.pendencias.some((p) => p.id === foco));
-    const [visao, setVisao]     = useState(focoEncerrada ? 'encerradas' : 'abertas');
+    const visaoInicial  = foco ? (focoEncerrada ? 'encerradas' : 'abertas') : (podeOperar && !minhas ? 'hoje' : 'abertas');
+    const [visao, setVisao]     = useState(visaoInicial);
     const [filtros, setFiltros] = useState({ ...FILTROS_PADRAO, solicitante: minhas && !foco ? String(eu) : 'todos' });
     const mudar = (campo, valor) => setFiltros((f) => ({ ...f, [campo]: valor }));
     const filtrando = Object.keys(FILTROS_PADRAO).some((k) => filtros[k] !== FILTROS_PADRAO[k]);
 
-    const base  = visao === 'abertas' ? abertas : encerradas;
+    const listaDa = (v) => (v === 'hoje' ? paraHoje : v === 'abertas' ? abertas : encerradas);
+    const base  = listaDa(visao);
     const lista = useMemo(() => filtrar(base, filtros), [base, filtros]);
 
     const solicitantes = useMemo(() => {
@@ -69,7 +80,7 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
         return [...mapa.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
     }, [abertas, encerradas]);
 
-    const statusDaVisao = (opcoes?.status ?? []).filter((s) => (visao === 'abertas'
+    const statusDaVisao = (opcoes?.status ?? []).filter((s) => (visao !== 'encerradas'
         ? !['concluida', 'cancelada'].includes(s.valor)
         : ['concluida', 'cancelada'].includes(s.valor)));
 
@@ -95,6 +106,8 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                     </p>
                 </div>
 
+                <AbasAnalistaConta atual="fila" podeAcompanhar={podeAcompanhar} />
+
                 {!podeOperar && (
                     <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.05] p-3">
                         <Eye size={15} className="text-sky-300 mt-0.5 shrink-0" />
@@ -105,9 +118,11 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                 )}
 
                 {/* Cards do topo — também são atalhos para a lista */}
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                    <Topo label="Em aberto" valor={resumo.em_aberto ?? 0} destaque onClick={() => atalho('abertas')}
-                          sub={`${resumo.empresas ?? 0} empresa(s)`} />
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <Topo label="Para hoje" valor={resumo.para_hoje ?? 0} destaque onClick={() => atalho('hoje')}
+                          sub={(resumo.para_tras ?? 0) > 0 ? `${resumo.para_tras} ficaram para trás` : 'planejadas e atrasadas'} />
+                    <Topo label="Em aberto" valor={resumo.em_aberto ?? 0} onClick={() => atalho('abertas')}
+                          sub={`${resumo.empresas ?? 0} empresa(s) · ${resumo.sem_data ?? 0} sem data`} />
                     <Topo label="Atrasadas" valor={resumo.atrasadas ?? 0} vermelho={(resumo.atrasadas ?? 0) > 0}
                           onClick={() => atalho('abertas', { atrasadas: true })} sub="prazo pedido já passou" />
                     <Topo label="Aguardando seller" valor={resumo.aguardando ?? 0}
@@ -127,7 +142,7 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                                     onClick={() => { setVisao(v.key); mudar('status', 'todos'); }}
                                     className={cn('rounded-full px-3 py-1 text-xs font-semibold transition',
                                         visao === v.key ? 'bg-ecf-yellow text-black' : 'bg-white/[0.05] text-white/60 hover:bg-white/[0.1]')}>
-                                {v.label} <span className="tabular-nums opacity-70">{totalPendencias(v.key === 'abertas' ? abertas : encerradas)}</span>
+                                {v.label} <span className="tabular-nums opacity-70">{totalPendencias(listaDa(v.key))}</span>
                             </button>
                         ))}
                     </div>
@@ -145,7 +160,7 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                                  opcoes={[['todos', 'Status: todos'], ...statusDaVisao.map((s) => [s.valor, s.rotulo])]} />
                         <Escolha valor={filtros.fase} onChange={(v) => mudar('fase', v)} titulo="Fase"
                                  opcoes={[['todas', 'Fase: todas'], ...['M1', 'M2', 'M3', 'M4'].map((f) => [f, f])]} />
-                        {visao === 'abertas' && (
+                        {visao !== 'encerradas' && (
                             <button type="button" onClick={() => mudar('atrasadas', !filtros.atrasadas)} aria-pressed={filtros.atrasadas}
                                     className={cn('rounded-lg border px-3 py-1.5 text-sm transition',
                                         filtros.atrasadas ? 'border-red-500/40 text-red-300' : 'border-white/[0.1] text-white/70 hover:border-white/25')}>
@@ -166,9 +181,14 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
 
                 {/* Lista */}
                 {base.length === 0 ? (
-                    <Vazio ok={visao === 'abertas'} texto={visao === 'abertas'
-                        ? 'Nenhuma pendência em aberto.'
-                        : 'Nenhuma pendência encerrada nos últimos 30 dias.'} />
+                    visao === 'hoje' ? (
+                        <Vazio ok texto={<>Nada para hoje.{(resumo.sem_data ?? 0) > 0 && <> Há {resumo.sem_data} sem data:{' '}
+                            <Link href={route('mlb.polos-painel.analista-conta.agenda')} className="text-ecf-yellow hover:underline">distribuir na agenda</Link>.</>}</>} />
+                    ) : (
+                        <Vazio ok={visao === 'abertas'} texto={visao === 'abertas'
+                            ? 'Nenhuma pendência em aberto.'
+                            : 'Nenhuma pendência encerrada nos últimos 30 dias.'} />
+                    )
                 ) : lista.length === 0 ? (
                     <Vazio texto="Nenhuma pendência com esses filtros." />
                 ) : (
@@ -271,9 +291,10 @@ function LinhaPendencia({ p, podeOperar, opcoes, podeComentar, emFoco }) {
             <div className="flex flex-col gap-3 md:flex-row md:items-start">
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                        <SeloPrioridade p={p} />
+                        {podeComentar && !p.encerrada ? <SeletorPrioridade p={p} opcoes={opcoes?.prioridades ?? []} /> : <SeloPrioridade p={p} />}
                         <span className="text-white/90 text-sm font-semibold">{p.tipo_label}</span>
                         <SeloPrazo p={p} />
+                        <SeloPlanejada p={p} />
                         {(p.encerrada || !podeOperar) && <SeloStatus p={p} />}
                     </div>
                     <p className="mt-1 whitespace-pre-line text-sm text-white/70">{p.descricao}</p>

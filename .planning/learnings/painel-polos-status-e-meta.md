@@ -746,8 +746,8 @@ fixo no ciclo de 10 dias úteis (Seg A … Sex B; Seg A = semana de 26/10/2026, 
 
 `/mlb/polos-painel/analista-conta` (`PendenciasContaPolos`, tabelas `polos_pendencias_conta*`):
 o analista de Ads encaminha, pelo cartão da fila de revisão, uma pendência que o Analista de
-Conta resolve na conta do seller. Fatia 1 da DEV-58; agenda semanal (fatia 2) e painel da
-coordenação (fatia 3) ainda não existem.
+Conta resolve na conta do seller. Três telas (Fila, Agenda, Acompanhamento), feitas em 11/11
+nas três fatias da DEV-58.
 
 - **Não é divisão de carteira** (regra do ticket). Nada do módulo escreve em `mlb_empresas`,
   `mlb_implementacoes`, `polos_revisoes` ou `polos_agenda_revisao`; o `PolosFilaController`
@@ -765,6 +765,16 @@ coordenação (fatia 3) ainda não existem.
   de migration em tabela com dado em produção. Não crie outra coluna para isso.
 - **Devolvida volta para Aberta sozinha** quando quem pediu comenta (como o ticket faz com a
   resposta do solicitante). Prazo pedido é obrigatório no formulário e não aceita data passada.
+- **Duas réguas de atraso, de propósito.** "Atrasada" = o prazo PEDIDO passou. "Ficou para
+  trás" = o dia PLANEJADO pelo Analista de Conta passou sem concluir. A Débora usou "atrasada"
+  para as duas no ticket; separar foi decisão de 11/11. A lista "Para hoje" = planejadas para
+  hoje + ficaram para trás + atrasadas SEM dia planejado (atrasada já planejada para depois não
+  volta para hoje: o Analista de Conta já decidiu).
+- **Planejar depois do prazo avisa quem pediu UMA vez por pessoa** por gravação — a seleção em
+  massa de 30 cartões não pode virar 30 avisos. Planejar só em dia de semana, de hoje em diante.
+- **Acompanhamento = admin ou líder de setor** (`lideranca.dashboard_setor`). "Em aberto" é o
+  estado de agora; criadas, concluídas e canceladas contam no período. Cancelada usa
+  `updated_at` como data do cancelamento (não há coluna própria).
 
 ## 20. A virada reescrevia o mês passado DE NOVO — por uma janela que o §12 não fechou (03/11/2026)
 

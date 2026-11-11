@@ -201,6 +201,10 @@ class PendenciasContaTest extends TestCase
         $this->assertEquals($antes, $this->retratoDaRevisao(), 'Criar pendência mexeu na revisão ou na carteira.');
 
         $p = PolosPendenciaConta::where('mlb_empresa_id', $x->id)->sole();
+        // Agenda e prioridade (fatia 2) também não podem mexer na revisão.
+        $this->actingAs($this->bruno)->post(route('mlb.polos-painel.pendencias-conta.planejar'), ['ids' => [$p->id], 'data' => '2026-11-16'])->assertSessionHasNoErrors();
+        $this->actingAs($this->jhonatan)->post(route('mlb.polos-painel.pendencias-conta.prioridade', $p), ['prioridade' => 'urgente'])->assertSessionHasNoErrors();
+        $this->assertEquals($antes, $this->retratoDaRevisao(), 'Planejar ou mudar prioridade mexeu na revisão ou na carteira.');
         $this->actingAs($this->bruno)->post(route('mlb.polos-painel.pendencias-conta.status', $p), ['status' => 'em_andamento'])->assertSessionHasNoErrors();
         $this->actingAs($this->bruno)->post(route('mlb.polos-painel.pendencias-conta.concluir', $p), ['texto' => 'Publicado'])->assertSessionHasNoErrors();
         $this->assertEquals($antes, $this->retratoDaRevisao(), 'Concluir pendência mexeu na revisão ou na carteira.');
@@ -421,5 +425,255 @@ class PendenciasContaTest extends TestCase
     {
         $this->assertSame(['MLB123', 'MLBU456', 'MLB789', 'ABC'], PendenciasContaPolos::mlbs("mlb-123,  MLBU-456\nMLB789;abc mlb123"));
         $this->assertSame([], PendenciasContaPolos::mlbs(null));
+    }
+
+    // ═══ Fatia 2 — agenda semanal ═══════════════════════════════════════════
+
+    private function planejar(array $ids, ?string $data, ?User $quem = null)
+    {
+        return $this->actingAs($quem ?? $this->bruno)->post(route('mlb.polos-painel.pendencias-conta.planejar'), ['ids' => $ids, 'data' => $data]);
+    }
+
+    public function test_com_50_pendencias_o_analista_distribui_a_semana_e_as_sem_data_ficam_na_coluna_sem_data(): void
+    {
+        $ids = [];
+        foreach (range(1, 10) as $n) {
+            $e = $this->empresa("Empresa {$n}", $n % 2 ? $this->jhonatan : $this->elvis);
+            foreach (range(1, 5) as $_) {
+                $ids[] = $this->pendencia($e, ['prazo' => '2026-11-30'])->id;
+            }
+        }
+
+        // 45 distribuídas de segunda a sexta da semana que vem (9 por dia), 5 sem data.
+        $dias = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20'];
+        foreach (array_chunk(array_slice($ids, 0, 45), 9) as $i => $lote) {
+            $this->planejar($lote, $dias[$i])->assertSessionHasNoErrors();
+        }
+
+        $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta.agenda', ['semana' => '2026-11-18']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $pg) => $pg->component('Polos/AnalistaConta/Agenda', false)
+                ->where('podeOperar', true)
+                ->where('agenda.semana.inicio', '2026-11-16')
+                ->where('agenda.total', 50)
+                ->has('agenda.dias', 5)
+                ->has('agenda.dias.0.cartoes', 9)
+                ->has('agenda.dias.4.cartoes', 9)
+                ->where('agenda.dias.0.rotulo', 'Seg')
+                ->where('agenda.dias.0.dia', '16/11')
+                ->where('agenda.dias.0.empresas', 2)
+                ->has('agenda.sem_data', 5)
+                ->has('agenda.para_tras', 0)
+                ->where('agenda.dias.0.cartoes.0.empresa.nome', 'Empresa 1'));
+
+        // Sem ?semana, abre na semana atual (11/11 é quarta): as da semana que vem só contam.
+        $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta.agenda'))
+            ->assertInertia(fn (Assert $pg) => $pg->where('agenda.semana.inicio', '2026-11-09')
+                ->where('agenda.semana.atual', true)
+                ->where('agenda.outras_semanas', 45)
+                ->where('agenda.dias.2.hoje', true)
+                ->where('agenda.dias.0.passado', true));
+    }
+
+    public function test_planejar_depois_do_prazo_destaca_o_cartao_e_avisa_quem_pediu_uma_vez_por_pessoa(): void
+    {
+        Notification::fake();
+        $x = $this->empresa('Empresa X', $this->jhonatan);
+        $z = $this->empresa('Empresa Z', $this->elvis);
+        $doJhonatan = collect(range(1, 3))->map(fn () => $this->pendencia($x, ['prazo' => '2026-11-12'])->id)->all();
+        $doElvis    = $this->pendencia($z, ['prazo' => '2026-11-20', 'solicitante_id' => $this->elvis->id])->id;
+
+        $this->planejar([...$doJhonatan, $doElvis], '2026-11-16')->assertSessionHasNoErrors();
+
+        // Um aviso só para o Jhonatan (3 pendências), nenhum para o Elvis (16/11 está antes do prazo dele).
+        Notification::assertSentToTimes($this->jhonatan, PendenciaContaNotification::class, 1);
+        Notification::assertSentTo($this->jhonatan, PendenciaContaNotification::class,
+            fn ($n) => $n->titulo === '3 pendências planejadas depois do prazo' && str_contains($n->mensagem, 'Empresa X (16/11)'));
+        Notification::assertNotSentTo($this->elvis, PendenciaContaNotification::class);
+
+        $agenda = app(PendenciasContaPolos::class)->agenda(Carbon::parse('2026-11-16'), now());
+        $cartoes = collect($agenda['dias'][0]['cartoes'])->keyBy('id');
+        $this->assertTrue($cartoes[$doJhonatan[0]]['depois_do_prazo']);
+        $this->assertFalse($cartoes[$doElvis]['depois_do_prazo']);
+        // Quem planejou vira o Analista de Conta da pendência.
+        $this->assertSame($this->bruno->id, (int) PolosPendenciaConta::find($doElvis)->analista_id);
+
+        // Uma só, depois do prazo: o aviso diz o dia e o prazo.
+        $outra = $this->pendencia($x, ['prazo' => '2026-11-13']);
+        $this->planejar([$outra->id], '2026-11-17')->assertSessionHasNoErrors();
+        Notification::assertSentTo($this->jhonatan, PendenciaContaNotification::class,
+            fn ($n) => $n->titulo === 'Pendência planejada depois do prazo: Empresa X' && str_contains($n->mensagem, 'Bruno vai fazer em 17/11; o prazo pedido era 13/11'));
+    }
+
+    public function test_planejar_e_do_analista_de_conta_em_dia_de_semana_de_hoje_em_diante(): void
+    {
+        $p = $this->pendencia($this->empresa('Empresa X', $this->jhonatan));
+
+        $this->planejar([$p->id], '2026-11-16', $this->jhonatan)->assertForbidden();
+        $this->planejar([$p->id], '2026-11-10')->assertSessionHasErrors('data');
+        $this->planejar([$p->id], '2026-11-14')->assertSessionHasErrors('data'); // sábado
+        $this->planejar([$p->id], '2026-11-11')->assertSessionHasNoErrors();      // hoje vale
+        $this->assertSame('2026-11-11', $p->fresh()->data_planejada->toDateString());
+
+        // Encerrada não entra no planejamento.
+        $p->update(['status' => 'concluida', 'concluida_em' => now()]);
+        $this->planejar([$p->id], '2026-11-12')->assertSessionHasNoErrors();
+        $this->assertSame('2026-11-11', $p->fresh()->data_planejada->toDateString());
+    }
+
+    public function test_toda_mudanca_de_data_planejada_fica_no_historico(): void
+    {
+        $x = $this->empresa('Empresa X', $this->jhonatan);
+        $p = $this->pendencia($x, ['prazo' => '2026-11-30']);
+
+        $this->planejar([$p->id], '2026-11-16')->assertSessionHasNoErrors();
+        $this->planejar([$p->id], '2026-11-16')->assertSessionHasNoErrors(); // mesmo dia: não registra de novo
+        $this->planejar([$p->id], '2026-11-18')->assertSessionHasNoErrors();
+        $this->planejar([$p->id], null)->assertSessionHasNoErrors();
+
+        $historico = collect(app(PendenciasContaPolos::class)->historico($x, now())[0]['historico']);
+        $this->assertSame(
+            ['planejou para 16/11', 'replanejou de 16/11 para 18/11', 'tirou a data planejada (era 18/11)'],
+            $historico->where('tipo', 'data_planejada')->pluck('resumo')->values()->all(),
+        );
+        $this->assertSame(['Bruno'], $historico->where('tipo', 'data_planejada')->pluck('por')->unique()->values()->all());
+        $this->assertNull($p->fresh()->data_planejada);
+    }
+
+    public function test_lista_do_dia_traz_as_de_hoje_as_que_ficaram_para_tras_e_as_atrasadas_sem_dia(): void
+    {
+        $e = $this->empresa('Empresa X', $this->jhonatan);
+        // Dia planejado no passado não passa pelo formulário: grava direto.
+        $hoje        = $this->pendencia($e, ['data_planejada' => '2026-11-11']);
+        $ficou       = $this->pendencia($e, ['data_planejada' => '2026-11-10']);
+        $amanha      = $this->pendencia($e, ['data_planejada' => '2026-11-12']);
+        $semDiaVenc  = $this->pendencia($e, ['prazo' => '2026-11-09']);
+        $semDia      = $this->pendencia($e, ['prazo' => '2026-11-20']);
+        $planVencida = $this->pendencia($e, ['prazo' => '2026-11-09', 'data_planejada' => '2026-11-13']);
+
+        $fila   = app(PendenciasContaPolos::class)->fila(now());
+        $linhas = collect($fila['abertas'][0]['pendencias'])->keyBy('id');
+
+        $this->assertEqualsCanonicalizing([$hoje->id, $ficou->id, $semDiaVenc->id], $linhas->filter(fn ($l) => $l['para_hoje'])->keys()->all());
+        $this->assertTrue($linhas[$ficou->id]['para_tras']);
+        $this->assertFalse($linhas[$amanha->id]['para_hoje']);
+        $this->assertFalse($linhas[$semDia->id]['para_hoje']);
+        // Prazo vencido mas planejada para sexta: o Analista de Conta já decidiu, não volta para hoje.
+        $this->assertFalse($linhas[$planVencida->id]['para_hoje']);
+        $this->assertSame(3, $fila['resumo']['para_hoje']);
+        $this->assertSame(1, $fila['resumo']['para_tras']);
+        $this->assertSame(2, $fila['resumo']['sem_data']);
+
+        // Na agenda da semana atual, a de ontem fica na coluna do dia (passado), não em "para trás".
+        $agenda = app(PendenciasContaPolos::class)->agenda(now(), now());
+        $this->assertContains($ficou->id, array_column($agenda['dias'][1]['cartoes'], 'id'));
+        $this->assertSame([], $agenda['para_tras']);
+        // Vista da semana que vem, a de ontem vira "ficou para trás".
+        $this->assertSame([$ficou->id], array_column(app(PendenciasContaPolos::class)->agenda(Carbon::parse('2026-11-16'), now())['para_tras'], 'id'));
+    }
+
+    public function test_responsavel_ve_o_dia_planejado_na_fila_de_revisao_e_a_agenda_sem_poder_mover(): void
+    {
+        $x = $this->empresa('Empresa X', $this->jhonatan);
+        $p = $this->pendencia($x, ['prazo' => '2026-11-30']);
+        $this->planejar([$p->id], '2026-11-16')->assertSessionHasNoErrors();
+
+        $this->actingAs($this->jhonatan)->get(route('mlb.polos-painel.fila'))
+            ->assertInertia(fn (Assert $pg) => $pg->where("pendenciasConta.{$x->id}.0.data_planejada", '16/11')
+                ->where("pendenciasConta.{$x->id}.0.analista", 'Bruno'));
+        $this->actingAs($this->jhonatan)->get(route('mlb.polos-painel.analista-conta.agenda', ['semana' => '2026-11-16']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $pg) => $pg->where('podeOperar', false)->has('agenda.dias.0.cartoes', 1));
+        $this->planejar([$p->id], '2026-11-18', $this->jhonatan)->assertForbidden();
+
+        $this->actingAs(User::factory()->create(['role' => 'consultor']))
+            ->get(route('mlb.polos-painel.analista-conta.agenda'))->assertForbidden();
+    }
+
+    public function test_quem_pediu_muda_a_prioridade_e_o_analista_de_conta_e_avisado(): void
+    {
+        Notification::fake();
+        $x = $this->empresa('Empresa X', $this->jhonatan);
+        $p = $this->pendencia($x, ['prioridade' => 'media', 'analista_id' => $this->bruno->id]);
+
+        $this->actingAs($this->jhonatan)->post(route('mlb.polos-painel.pendencias-conta.prioridade', $p), ['prioridade' => 'urgente'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('urgente', $p->fresh()->prioridade);
+        Notification::assertSentTo($this->bruno, PendenciaContaNotification::class,
+            fn ($n) => $n->titulo === 'Prioridade mudou: Empresa X' && str_contains($n->mensagem, 'Agora Urgente (era Média)'));
+
+        $ultimo = PolosPendenciaContaEvento::where('pendencia_id', $p->id)->orderByDesc('id')->first();
+        $this->assertSame(['prioridade', 'media', 'urgente', $this->jhonatan->id], [$ultimo->tipo, $ultimo->de, $ultimo->para, (int) $ultimo->user_id]);
+
+        $this->actingAs($this->elvis)->post(route('mlb.polos-painel.pendencias-conta.prioridade', $p), ['prioridade' => 'baixa'])->assertForbidden();
+        $this->actingAs($this->jhonatan)->post(route('mlb.polos-painel.pendencias-conta.prioridade', $p), ['prioridade' => 'maxima'])->assertSessionHasErrors('prioridade');
+    }
+
+    // ═══ Fatia 3 — acompanhamento da coordenação ════════════════════════════
+
+    public function test_acompanhamento_conta_status_quem_pediu_atrasadas_tempo_medio_e_volume(): void
+    {
+        $x = $this->empresa('Empresa X', $this->jhonatan);
+        $z = $this->empresa('Empresa Z', $this->elvis);
+        $quando = function (PolosPendenciaConta $p, string $criada, ?string $concluida = null, ?string $atualizada = null) {
+            DB::table('polos_pendencias_conta')->where('id', $p->id)->update(array_filter([
+                'created_at' => $criada, 'concluida_em' => $concluida, 'updated_at' => $atualizada ?? $concluida ?? $criada,
+            ]));
+        };
+
+        // Jhonatan: duas concluídas no período (24 h e 2 h → média 13 h) e uma antiga, fora dele.
+        $quando($this->pendencia($x, ['status' => 'concluida']), '2026-11-09 10:00:00', '2026-11-10 10:00:00');
+        $quando($this->pendencia($x, ['status' => 'concluida']), '2026-11-11 08:00:00', '2026-11-11 10:00:00');
+        $quando($this->pendencia($x, ['status' => 'concluida']), '2026-08-01 08:00:00', '2026-08-02 08:00:00');
+        // Elvis: uma em aberto atrasada, uma cancelada hoje.
+        $quando($this->pendencia($z, ['solicitante_id' => $this->elvis->id, 'prazo' => '2026-11-09', 'status' => 'em_andamento']), '2026-11-05 09:00:00');
+        $quando($this->pendencia($z, ['solicitante_id' => $this->elvis->id, 'status' => 'cancelada']), '2026-11-10 09:00:00', null, '2026-11-11 09:00:00');
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin)->get(route('mlb.polos-painel.analista-conta.acompanhamento'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $pg) => $pg->component('Polos/AnalistaConta/Acompanhamento', false)
+                ->where('dados.periodo.dias', 30)
+                ->where('dados.resumo.em_aberto', 1)
+                ->where('dados.resumo.atrasadas', 1)
+                ->where('dados.resumo.concluidas', 2)
+                ->where('dados.resumo.canceladas', 1)
+                ->where('dados.resumo.tempo_medio_horas', 13)
+                ->where('dados.por_status.1.status', 'em_andamento')
+                ->where('dados.por_status.1.total', 1)
+                ->where('dados.por_status.4.status', 'concluida')
+                ->where('dados.por_status.4.total', 2)
+                ->where('dados.por_solicitante.0.nome', 'Elvis')
+                ->where('dados.por_solicitante.0.atrasadas', 1)
+                ->where('dados.por_solicitante.1.nome', 'Jhonatan')
+                ->where('dados.por_solicitante.1.concluidas', 2)
+                ->where('dados.por_solicitante.1.tempo_medio_horas', 13)
+                ->where('dados.atrasadas.0.empresa.nome', 'Empresa Z')
+                ->has('dados.por_dia', 30)
+                ->where('dados.por_dia.29.data', '2026-11-11')
+                ->where('dados.por_dia.29.concluidas', 1)
+                ->where('dados.por_dia.28.concluidas', 1)
+                ->has('dados.por_semana', 8)
+                ->where('dados.por_semana.7.inicio', '2026-11-09')
+                ->where('dados.por_semana.7.concluidas', 2));
+
+        // Período de 7 dias: só muda a janela.
+        $this->actingAs($admin)->get(route('mlb.polos-painel.analista-conta.acompanhamento', ['dias' => 7]))
+            ->assertInertia(fn (Assert $pg) => $pg->where('dados.periodo.dias', 7)->has('dados.por_dia', 7));
+    }
+
+    public function test_acompanhamento_e_da_coordenacao_e_da_lideranca(): void
+    {
+        $lider = $this->userCom('Líder', [Permissions::MLB_FATURAMENTO_POLOS]);
+        DB::table('setor_lideres')->insert([
+            'setor_id' => DB::table('user_setores')->where('user_id', $lider->id)->value('setor_id'),
+            'user_id' => $lider->id, 'assigned_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->actingAs($lider->fresh())->get(route('mlb.polos-painel.analista-conta.acompanhamento'))->assertOk();
+        $this->actingAs($this->jhonatan)->get(route('mlb.polos-painel.analista-conta.acompanhamento'))->assertForbidden();
+        $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta.acompanhamento'))->assertForbidden();
+        $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta'))
+            ->assertInertia(fn (Assert $pg) => $pg->where('podeAcompanhar', false));
     }
 }

@@ -18,6 +18,9 @@ class PolosPendenciaContaEvento extends Model
     public const COMENTARIO = 'comentario';
     public const ANEXO      = 'anexo';
     public const CONCLUIDA  = 'concluida';
+    /** Agenda (fatia 2): o dia planejado pelo Analista de Conta mudou. `de`/`para` = AAAA-MM-DD ou nulo. */
+    public const DATA_PLANEJADA = 'data_planejada';
+    public const PRIORIDADE     = 'prioridade';
 
     protected $fillable = ['pendencia_id', 'user_id', 'tipo', 'de', 'para', 'texto', 'meta'];
 

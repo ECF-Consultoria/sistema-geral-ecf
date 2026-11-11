@@ -1763,7 +1763,11 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     // Analista de Conta (TKT-0035): pendências encaminhadas pela fila de revisão, em paralelo à
     // carteira do responsável. Gates no controller (ver, operar, encaminhar — PendenciasContaPolos).
     Route::get('/polos-painel/analista-conta',                                [PolosPendenciaContaController::class, 'index'])->name('polos-painel.analista-conta');
+    Route::get('/polos-painel/analista-conta/agenda',                         [PolosPendenciaContaController::class, 'agenda'])->name('polos-painel.analista-conta.agenda');
+    Route::get('/polos-painel/analista-conta/acompanhamento',                 [PolosPendenciaContaController::class, 'acompanhamento'])->name('polos-painel.analista-conta.acompanhamento');
     Route::post('/polos-painel/pendencias-conta',                             [PolosPendenciaContaController::class, 'store'])->name('polos-painel.pendencias-conta.store');
+    Route::post('/polos-painel/pendencias-conta/planejar',                    [PolosPendenciaContaController::class, 'planejar'])->name('polos-painel.pendencias-conta.planejar');
+    Route::post('/polos-painel/pendencias-conta/{pendencia}/prioridade',      [PolosPendenciaContaController::class, 'prioridade'])->name('polos-painel.pendencias-conta.prioridade');
     Route::post('/polos-painel/pendencias-conta/{pendencia}/status',          [PolosPendenciaContaController::class, 'status'])->name('polos-painel.pendencias-conta.status');
     Route::post('/polos-painel/pendencias-conta/{pendencia}/concluir',        [PolosPendenciaContaController::class, 'concluir'])->name('polos-painel.pendencias-conta.concluir');
     Route::post('/polos-painel/pendencias-conta/{pendencia}/comentarios',     [PolosPendenciaContaController::class, 'comentar'])->name('polos-painel.pendencias-conta.comentar');

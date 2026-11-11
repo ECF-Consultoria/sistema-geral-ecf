@@ -9,6 +9,7 @@ use App\Services\Polos\PendenciasContaPolos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -43,12 +44,92 @@ class PolosPendenciaContaController extends Controller
             'fila'       => $this->pendencias->fila(now()),
             'opcoes'     => PendenciasContaPolos::opcoes(),
             'podeOperar' => PendenciasContaPolos::podeOperar($user),
+            'podeAcompanhar' => PendenciasContaPolos::podeAcompanhar($user),
             'eu'         => $user->id,
             // Abre já na pendência do aviso do sino (?pendencia=ID).
             'foco'       => $request->integer('pendencia') ?: null,
             // Vindo da fila de revisão: abre nas que a pessoa encaminhou (?minhas=1).
             'minhas'     => $request->boolean('minhas'),
         ]);
+    }
+
+    /**
+     * Agenda semanal (fatia 2). `?semana=AAAA-MM-DD` = qualquer dia da semana; sem ela, a semana
+     * atual (no fim de semana, a próxima). Quem não opera vê, mas não move cartão.
+     */
+    public function agenda(Request $request): Response
+    {
+        $user = $request->user();
+        abort_unless($user && PendenciasContaPolos::podeVer($user), 403);
+
+        $semana = PendenciasContaPolos::segundaDaAgenda(now());
+        if ($request->filled('semana')) {
+            try {
+                $semana = Carbon::parse((string) $request->query('semana'), 'America/Sao_Paulo');
+            } catch (\Throwable) {
+                // Data inválida na URL: abre na semana padrão.
+            }
+        }
+
+        return Inertia::render('Polos/AnalistaConta/Agenda', [
+            'agenda'         => $this->pendencias->agenda($semana, now()),
+            'podeOperar'     => PendenciasContaPolos::podeOperar($user),
+            'podeAcompanhar' => PendenciasContaPolos::podeAcompanhar($user),
+            'hoje'           => now()->setTimezone('America/Sao_Paulo')->toDateString(),
+        ]);
+    }
+
+    /** Acompanhamento da coordenação e da liderança (fatia 3). `?dias=` 7, 30 (padrão) ou 90. */
+    public function acompanhamento(Request $request): Response
+    {
+        $user = $request->user();
+        abort_unless($user && PendenciasContaPolos::podeAcompanhar($user), 403);
+
+        $dias = in_array((int) $request->query('dias'), [7, 30, 90], true) ? (int) $request->query('dias') : 30;
+
+        return Inertia::render('Polos/AnalistaConta/Acompanhamento', [
+            'dados'      => $this->pendencias->acompanhamento(now(), $dias),
+            'podeOperar' => PendenciasContaPolos::podeOperar($user),
+        ]);
+    }
+
+    /** Planeja (ou tira a data de) uma ou várias pendências — arrastar ou seleção em massa. */
+    public function planejar(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless(PendenciasContaPolos::podeOperar($user), 403, 'Só o Analista de Conta ou a coordenação planeja.');
+
+        $dados = $request->validate([
+            'ids'   => ['required', 'array', 'min:1', 'max:300'],
+            'ids.*' => ['integer'],
+            'data'  => ['nullable', 'date', 'after_or_equal:today', function ($attr, $valor, $falha) {
+                if ($valor && Carbon::parse($valor)->isWeekend()) {
+                    $falha('Escolha um dia de semana.');
+                }
+            }],
+        ], [
+            'data.after_or_equal' => 'Não dá para planejar num dia que já passou.',
+        ]);
+
+        $n = $this->pendencias->planejar($dados['ids'], $dados['data'] ?? null, $user);
+
+        $quando = isset($dados['data']) ? 'para ' . Carbon::parse($dados['data'])->format('d/m') : 'sem data';
+
+        return back()->with('success', $n === 0 ? 'Nada mudou.' : ($n === 1 ? "Pendência planejada {$quando}." : "{$n} pendências planejadas {$quando}."));
+    }
+
+    /** Prioridade: quem pediu pode subir para pedir antecipação; o Analista de Conta, ajustar. */
+    public function prioridade(Request $request, PolosPendenciaConta $pendencia): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless(PendenciasContaPolos::podeComentar($user, $pendencia), 403);
+        abort_if($pendencia->encerrada(), 422, 'Pendência encerrada não muda de prioridade.');
+
+        $dados = $request->validate(['prioridade' => ['required', Rule::in(array_keys(PolosPendenciaConta::PRIORIDADES))]]);
+
+        $this->pendencias->mudarPrioridade($pendencia, $user, $dados['prioridade']);
+
+        return back()->with('success', 'Prioridade: ' . PolosPendenciaConta::PRIORIDADES[$dados['prioridade']] . '.');
     }
 
     public function store(Request $request): RedirectResponse

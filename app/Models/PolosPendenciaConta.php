@@ -110,4 +110,20 @@ class PolosPendenciaConta extends Model
     {
         return ! $this->encerrada() && $this->prazo !== null && $this->prazo->toDateString() < $hoje->toDateString();
     }
+
+    /**
+     * O dia planejado pelo Analista de Conta já passou e a pendência segue na fila ("ficou para
+     * trás"). Não confundir com atrasada(), que olha o prazo PEDIDO por quem encaminhou.
+     */
+    public function paraTras(CarbonInterface $hoje): bool
+    {
+        return ! $this->encerrada() && $this->data_planejada !== null && $this->data_planejada->toDateString() < $hoje->toDateString();
+    }
+
+    /** O dia planejado cai depois do prazo pedido — quem pediu é avisado e o cartão fica em destaque. */
+    public function planejadaDepoisDoPrazo(): bool
+    {
+        return $this->data_planejada !== null && $this->prazo !== null
+            && $this->data_planejada->toDateString() > $this->prazo->toDateString();
+    }
 }
