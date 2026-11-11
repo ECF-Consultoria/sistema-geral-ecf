@@ -757,8 +757,9 @@ coordenação (fatia 3) ainda não existem.
   na revisão.
 - **O papel é a chave `mlb.analista_conta`, sem `mlb.faturamento_polos`.** Quem só tem o papel
   não abre a fila de revisão nem o Faturamento (é de propósito: não herda carteira). Para dar o
-  papel a alguém: um setor com essa chave e a pessoa nele. Em 11/11 havia dois "Bruno" (#26 e
-  #44) e ninguém confirmou qual é o Analista de Conta — a chave ainda não foi dada a ninguém.
+  papel a alguém: um setor com essa chave e a pessoa nele (setor próprio — pôr a chave no setor
+  Polos daria o papel ao Elvis e ao Jhonatan também). **O Analista de Conta é o Bruno #26**
+  ("Bruno"), confirmado pelo dev em 11/11; o #44 (Bruno Pieretti) é outra pessoa.
 - **Coordenação = admin** (decisão de 11/11, sem permissão própria).
 - **`data_planejada` já existe na tabela** desde a fatia 1, para a agenda semanal não precisar
   de migration em tabela com dado em produção. Não crie outra coluna para isso.
