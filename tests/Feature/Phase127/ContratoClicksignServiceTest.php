@@ -376,6 +376,19 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertTrue($delayPrimeiro->timestamp < $delaySegundo->timestamp);
     }
 
+    /** 11/11/2026 — a fila da geração vem de config; produção usa a `contratos`. */
+    #[Test]
+    public function fila_da_geracao_vem_da_configuracao(): void
+    {
+        config(['services.clicksign.fila_geracao' => 'contratos']);
+        $company = $this->companyCompleta();
+        $this->contratoServicoAtivo($company, $this->servicoDeTeste(['nome' => 'Gestão de Tráfego']));
+
+        $this->service->iniciarParaEmpresa($company);
+
+        Queue::assertPushedOn('contratos', GerarContratoAssinaturaJob::class);
+    }
+
     // ─── Testes 12+ (quick 260821-l8n) — serviço duplicado para de perder dado ───
 
     /**

@@ -315,6 +315,11 @@ return [
         'webhook_secret'   => env('CLICKSIGN_WEBHOOK_SECRET'),
         'api_user_email'   => env('CLICKSIGN_API_USER_EMAIL'),
         'max_upload_bytes' => env('CLICKSIGN_MAX_UPLOAD_BYTES', 20971520),
+        // 11/11/2026 — fila da geração do contrato (GerarContratoAssinaturaJob).
+        // Padrão `high`; em produção vira `contratos`, lida por um worker
+        // dedicado (`ecf-worker-contratos`, --queue=contratos,high). Só trocar
+        // depois que esse worker existir: fila sem worker = contrato parado.
+        'fila_geracao'     => env('CLICKSIGN_FILA_GERACAO', 'high'),
 
         // Fase 131 Plano 131-01 (UI-05 do UI-SPEC, CLICK-10/D-13) — URL do
         // PAINEL da Clicksign (onde a pessoa CONCLUI o cancelamento à mão,

@@ -395,8 +395,13 @@ class ContratoClicksignService
             // o dono + combinados, nunca por item), um grupo ambíguo ou um
             // serviço isento não deve "gastar" um slot de delay que nenhum
             // job vai usar.
+            //
+            // 11/11/2026 — a fila agora vem de config (`fila_geracao`): a
+            // `high` tem um worker só e o `desempenho:warm-cache` passou a
+            // ocupá-lo por 5 a 9 minutos, segurando o rascunho do Comercial.
+            // Em produção vai para `contratos`, com worker dedicado.
             GerarContratoAssinaturaJob::dispatch($contrato)
-                ->onQueue('high')
+                ->onQueue((string) config('services.clicksign.fila_geracao', 'high'))
                 ->delay(now()->addSeconds($indiceDelay * 5));
 
             $indiceDelay++;
