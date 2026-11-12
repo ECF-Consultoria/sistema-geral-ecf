@@ -5,6 +5,7 @@ namespace App\Services\Polos;
 use App\Models\MlbEmpresa;
 use App\Models\PolosPendenciaConta;
 use App\Models\PolosPendenciaContaEvento;
+use App\Models\SetorPermissao;
 use App\Models\User;
 use App\Notifications\PendenciaContaNotification;
 use App\Support\Permissions;
@@ -68,6 +69,22 @@ class PendenciasContaPolos
     public static function podeOperar(User $u): bool
     {
         return $u->isAdmin() || $u->hasPermission(Permissions::MLB_ANALISTA_CONTA);
+    }
+
+    /**
+     * Escolher ou mudar o dia planejado é só de quem tem o papel de Analista de Conta: a Débora
+     * escreveu que o dia é do Bruno e que o Elvis e o Jhonatan só o veem. Admin NÃO herda (em
+     * produção o Jhonatan é admin), por isso a checagem vai nos setores da pessoa, sem o atalho
+     * de admin do hasPermission(). Status e conclusão seguem com podeOperar().
+     * Setor de sistema (Administração, Desenvolvimento) não conta: salvar as permissões dele grava
+     * o catálogo INTEIRO, e todo admin ganharia o papel sem ninguém ter decidido isso.
+     */
+    public static function podePlanejar(User $u): bool
+    {
+        return SetorPermissao::query()
+            ->whereIn('setor_id', $u->setores()->where('setores.is_system', false)->pluck('setores.id'))
+            ->where('permission_key', Permissions::MLB_ANALISTA_CONTA)
+            ->exists();
     }
 
     public static function podeVer(User $u): bool

@@ -73,7 +73,7 @@ class PolosPendenciaContaController extends Controller
 
         return Inertia::render('Polos/AnalistaConta/Agenda', [
             'agenda'         => $this->pendencias->agenda($semana, now()),
-            'podeOperar'     => PendenciasContaPolos::podeOperar($user),
+            'podePlanejar'   => PendenciasContaPolos::podePlanejar($user),
             'podeAcompanhar' => PendenciasContaPolos::podeAcompanhar($user),
             'hoje'           => now()->setTimezone('America/Sao_Paulo')->toDateString(),
         ]);
@@ -97,7 +97,7 @@ class PolosPendenciaContaController extends Controller
     public function planejar(Request $request): RedirectResponse
     {
         $user = $request->user();
-        abort_unless(PendenciasContaPolos::podeOperar($user), 403, 'Só o Analista de Conta ou a coordenação planeja.');
+        abort_unless(PendenciasContaPolos::podePlanejar($user), 403, 'Só o Analista de Conta planeja o dia.');
 
         $dados = $request->validate([
             'ids'   => ['required', 'array', 'min:1', 'max:300'],

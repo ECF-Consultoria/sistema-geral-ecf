@@ -760,7 +760,13 @@ nas três fatias da DEV-58.
   papel a alguém: um setor com essa chave e a pessoa nele (setor próprio — pôr a chave no setor
   Polos daria o papel ao Elvis e ao Jhonatan também). **O Analista de Conta é o Bruno #26**
   ("Bruno"), confirmado pelo dev em 11/11; o #44 (Bruno Pieretti) é outra pessoa.
-- **Coordenação = admin** (decisão de 11/11, sem permissão própria).
+- **Coordenação = admin** (decisão de 11/11, sem permissão própria) para status e conclusão.
+  **O dia planejado NÃO segue essa regra** (decisão do dev em 12/11): só quem tem
+  `mlb.analista_conta` vindo de um SETOR planeja (`podePlanejar`, sem o atalho de admin do
+  `hasPermission`). Motivo: em produção o Jhonatan é admin, e a Débora pediu que ele só veja o
+  dia. Testes com usuário `consultor` não pegam isso — o perfil real dos analistas é que manda.
+  Setor `is_system` (Administração, Desenvolvimento) NÃO conta: salvar as permissões dele grava
+  o catálogo inteiro (`SetorController::syncPermissoes`), e todo admin viraria Analista de Conta.
 - **`data_planejada` já existe na tabela** desde a fatia 1, para a agenda semanal não precisar
   de migration em tabela com dado em produção. Não crie outra coluna para isso.
 - **Devolvida volta para Aberta sozinha** quando quem pediu comenta (como o ticket faz com a

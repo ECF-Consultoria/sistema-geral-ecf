@@ -22,7 +22,7 @@ const PARA_TRAS = 'para-tras';
  * planejado depois do prazo fica em destaque (e quem pediu é avisado no servidor). Os analistas
  * de Ads veem a agenda, mas não movem nada.
  */
-export default function AgendaAnalistaConta({ agenda, podeOperar = false, podeAcompanhar = false, hoje }) {
+export default function AgendaAnalistaConta({ agenda, podePlanejar = false, podeAcompanhar = false, hoje }) {
     const { auth } = usePage().props;
     const veRevisao = (auth?.permissions ?? []).includes('mlb.faturamento_polos');
     const hojeStr   = hoje ?? hojeIso();
@@ -116,7 +116,7 @@ export default function AgendaAnalistaConta({ agenda, podeOperar = false, podeAc
                     )}
                     <h1 className="text-white font-display font-extrabold text-2xl tracking-tight">Agenda do Analista de Conta</h1>
                     <p className="text-white/50 text-sm">
-                        {podeOperar
+                        {podePlanejar
                             ? 'Arraste as pendências para o dia em que vai fazer. Marque várias para planejar de uma vez. O prazo é o que quem encaminhou pediu; o dia planejado é seu.'
                             : 'O dia em que o Analista de Conta planejou fazer cada pendência. Para antecipar, suba a prioridade ou comente na pendência.'}
                     </p>
@@ -124,7 +124,7 @@ export default function AgendaAnalistaConta({ agenda, podeOperar = false, podeAc
 
                 <AbasAnalistaConta atual="agenda" podeAcompanhar={podeAcompanhar} />
 
-                {!podeOperar && (
+                {!podePlanejar && (
                     <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.05] p-3">
                         <Eye size={15} className="text-sky-300 mt-0.5 shrink-0" />
                         <p className="text-sky-100/80 text-xs">Você vê a agenda; só o Analista de Conta move os cartões.</p>
@@ -153,7 +153,7 @@ export default function AgendaAnalistaConta({ agenda, podeOperar = false, podeAc
                 </div>
 
                 {/* Barra da seleção */}
-                {podeOperar && selecionados.size > 0 && (
+                {podePlanejar && selecionados.size > 0 && (
                     <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-ecf-yellow/30 bg-ecf-card/95 p-2.5 shadow-lg backdrop-blur">
                         <span className="px-1 text-sm font-semibold text-white">{selecionados.size} selecionada(s)</span>
                         <span className="text-white/40 text-xs">Planejar para</span>
@@ -194,7 +194,7 @@ export default function AgendaAnalistaConta({ agenda, podeOperar = false, podeAc
                             onDragEnd={aoSoltar}>
                     <div className={cn('grid grid-flow-col auto-cols-[minmax(190px,1fr)] gap-3 overflow-x-auto pb-2', ocupado && 'opacity-70 transition-opacity')}>
                         {colunas.map((c) => (
-                            <Coluna key={c.id} coluna={c} podeOperar={podeOperar} selecionados={selecionados}
+                            <Coluna key={c.id} coluna={c} podePlanejar={podePlanejar} selecionados={selecionados}
                                     onAlternar={alternar} onAbrir={abrir} />
                         ))}
                     </div>
@@ -214,8 +214,8 @@ export default function AgendaAnalistaConta({ agenda, podeOperar = false, podeAc
     );
 }
 
-function Coluna({ coluna: c, podeOperar, selecionados, onAlternar, onAbrir }) {
-    const { setNodeRef, isOver } = useDroppable({ id: c.id, disabled: !podeOperar || !c.aceita });
+function Coluna({ coluna: c, podePlanejar, selecionados, onAlternar, onAbrir }) {
+    const { setNodeRef, isOver } = useDroppable({ id: c.id, disabled: !podePlanejar || !c.aceita });
 
     return (
         <section ref={setNodeRef}
@@ -239,12 +239,12 @@ function Coluna({ coluna: c, podeOperar, selecionados, onAlternar, onAbrir }) {
             </header>
             <div className="flex flex-1 flex-col gap-2">
                 {c.cartoes.map((cartao) => (
-                    <Cartao key={cartao.id} c={cartao} podeOperar={podeOperar} marcado={selecionados.has(cartao.id)}
+                    <Cartao key={cartao.id} c={cartao} podePlanejar={podePlanejar} marcado={selecionados.has(cartao.id)}
                             onAlternar={onAlternar} onAbrir={onAbrir} />
                 ))}
                 {c.cartoes.length === 0 && (
                     <p className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-white/[0.07] px-2 py-6 text-center text-[11px] text-white/25">
-                        {c.aceita && podeOperar ? 'Solte aqui' : 'Nada'}
+                        {c.aceita && podePlanejar ? 'Solte aqui' : 'Nada'}
                     </p>
                 )}
             </div>
@@ -252,16 +252,16 @@ function Coluna({ coluna: c, podeOperar, selecionados, onAlternar, onAbrir }) {
     );
 }
 
-function Cartao({ c, podeOperar, marcado, onAlternar, onAbrir }) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: c.id, disabled: !podeOperar });
+function Cartao({ c, podePlanejar, marcado, onAlternar, onAbrir }) {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: c.id, disabled: !podePlanejar });
 
     return (
         <div ref={setNodeRef} {...attributes} {...listeners}
              style={{ touchAction: 'manipulation' }}
              onClick={() => onAbrir(c.id)}
-             title={podeOperar ? 'Clique para abrir · arraste para mudar o dia' : 'Clique para abrir'}
+             title={podePlanejar ? 'Clique para abrir · arraste para mudar o dia' : 'Clique para abrir'}
              className={cn('cursor-pointer rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/50', isDragging && 'opacity-25')}>
-            <ConteudoCartao c={c} marcado={marcado} onAlternar={podeOperar ? onAlternar : null} />
+            <ConteudoCartao c={c} marcado={marcado} onAlternar={podePlanejar ? onAlternar : null} />
         </div>
     );
 }

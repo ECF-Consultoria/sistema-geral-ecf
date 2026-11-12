@@ -453,7 +453,7 @@ class PendenciasContaTest extends TestCase
         $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta.agenda', ['semana' => '2026-11-18']))
             ->assertOk()
             ->assertInertia(fn (Assert $pg) => $pg->component('Polos/AnalistaConta/Agenda', false)
-                ->where('podeOperar', true)
+                ->where('podePlanejar', true)
                 ->where('agenda.semana.inicio', '2026-11-16')
                 ->where('agenda.total', 50)
                 ->has('agenda.dias', 5)
@@ -583,11 +583,51 @@ class PendenciasContaTest extends TestCase
                 ->where("pendenciasConta.{$x->id}.0.analista", 'Bruno'));
         $this->actingAs($this->jhonatan)->get(route('mlb.polos-painel.analista-conta.agenda', ['semana' => '2026-11-16']))
             ->assertOk()
-            ->assertInertia(fn (Assert $pg) => $pg->where('podeOperar', false)->has('agenda.dias.0.cartoes', 1));
+            ->assertInertia(fn (Assert $pg) => $pg->where('podePlanejar', false)->has('agenda.dias.0.cartoes', 1));
         $this->planejar([$p->id], '2026-11-18', $this->jhonatan)->assertForbidden();
 
         $this->actingAs(User::factory()->create(['role' => 'consultor']))
             ->get(route('mlb.polos-painel.analista-conta.agenda'))->assertForbidden();
+    }
+
+    public function test_admin_sem_o_papel_nao_muda_o_dia_planejado_mas_muda_o_status(): void
+    {
+        // Em produção o Jhonatan é admin (12/11/2026): o dia continua só do Analista de Conta.
+        $jhonatanAdmin = User::factory()->create(['role' => 'admin', 'name' => 'Jhonatan admin']);
+        $x = $this->empresa('Empresa X', $jhonatanAdmin);
+        $p = $this->pendencia($x, ['prazo' => '2026-11-30', 'solicitante_id' => $jhonatanAdmin->id]);
+        $this->planejar([$p->id], '2026-11-16')->assertSessionHasNoErrors();
+
+        $this->assertFalse(PendenciasContaPolos::podePlanejar($jhonatanAdmin));
+        $this->actingAs($jhonatanAdmin)->get(route('mlb.polos-painel.analista-conta.agenda', ['semana' => '2026-11-16']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $pg) => $pg->where('podePlanejar', false)->has('agenda.dias.0.cartoes', 1));
+        $this->planejar([$p->id], '2026-11-18', $jhonatanAdmin)->assertForbidden();
+        $this->planejar([$p->id], null, $jhonatanAdmin)->assertForbidden();
+        $this->assertSame('2026-11-16', $p->fresh()->data_planejada->toDateString());
+
+        // Coordenação (admin) segue mudando o status.
+        $this->actingAs($jhonatanAdmin)->post(route('mlb.polos-painel.pendencias-conta.status', $p), ['status' => 'em_andamento'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('em_andamento', $p->fresh()->status);
+
+        // Setor de sistema (Administração) grava o catálogo inteiro ao salvar: não conta como papel.
+        $sistemaId = DB::table('setores')->insertGetId([
+            'nome' => 'Administração teste', 'slug' => 'adm-' . Str::random(6), 'active' => true, 'is_system' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('setor_permissoes')->insert(['setor_id' => $sistemaId, 'permission_key' => Permissions::MLB_ANALISTA_CONTA, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('user_setores')->insert(['user_id' => $jhonatanAdmin->id, 'setor_id' => $sistemaId, 'cargo_id' => null, 'is_principal' => true,
+            'assigned_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertFalse(PendenciasContaPolos::podePlanejar($jhonatanAdmin->fresh()));
+        $this->planejar([$p->id], '2026-11-18', $jhonatanAdmin->fresh())->assertForbidden();
+
+        // Admin que também está num setor com o papel planeja normalmente.
+        $adminComPapel = $this->userCom('Admin com papel', [Permissions::MLB_ANALISTA_CONTA]);
+        $adminComPapel->forceFill(['role' => 'admin'])->save();
+        $this->assertTrue(PendenciasContaPolos::podePlanejar($adminComPapel->fresh()));
+        $this->planejar([$p->id], '2026-11-18', $adminComPapel->fresh())->assertSessionHasNoErrors();
+        $this->assertSame('2026-11-18', $p->fresh()->data_planejada->toDateString());
     }
 
     public function test_quem_pediu_muda_a_prioridade_e_o_analista_de_conta_e_avisado(): void
