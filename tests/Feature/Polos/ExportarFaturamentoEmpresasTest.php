@@ -182,7 +182,7 @@ class ExportarFaturamentoEmpresasTest extends TestCase
         $aba = $this->baixar($admin);
 
         $cabecalho = array_keys($this->linha($aba, 1));
-        foreach (['Empresa', 'Cust ID', 'Polo', 'Fase', 'Status', 'Faturamento (móveis)', 'Meta', '% da meta', 'ADS',
+        foreach (['Empresa', 'Cust ID', 'Polo', 'Fase', 'Status', 'Faturamento (categorias da meta)', 'Meta', '% da meta', 'ADS',
                   'ADS ligado/desligado', 'Campanhas', 'Problema', 'Nota do problema', 'Reunião do mês',
                   'Reunião marcada por', 'Comentários'] as $col) {
             $this->assertContains($col, $cabecalho, "coluna '{$col}' sumiu da planilha");
@@ -200,7 +200,7 @@ class ExportarFaturamentoEmpresasTest extends TestCase
         $this->assertSame('Arapongas', $alfa['Polo']);
         $this->assertSame('M2', $alfa['Fase']);
         $this->assertSame('No alvo', $alfa['Status']);
-        $this->assertEqualsWithDelta(1500, $alfa['Faturamento (móveis)'], 0.001);
+        $this->assertEqualsWithDelta(1500, $alfa['Faturamento (categorias da meta)'], 0.001);
         $this->assertEqualsWithDelta(1000, $alfa['Meta'], 0.001);
         // Valor real (150%), não a barra travada em 100 da tela.
         $this->assertEqualsWithDelta(150, $alfa['% da meta'], 0.001);

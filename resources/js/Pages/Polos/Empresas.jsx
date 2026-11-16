@@ -354,7 +354,7 @@ export default function PolosEmpresas({
                                 <Th campo="responsavel">Responsável</Th>
                                 <Th campo="status">Status</Th>
                                 <Th campo="faturamento" className="text-right">
-                                    {metricaFaturamento === 'gross' ? 'Faturamento' : 'Faturamento (móveis)'}
+                                    {metricaFaturamento === 'gross' ? 'Faturamento' : 'Faturamento (categorias da meta)'}
                                 </Th>
                                 <Th campo="pct">% da meta</Th>
                                 {/* O teto é o mesmo para todas as linhas: aparece uma vez aqui, e não

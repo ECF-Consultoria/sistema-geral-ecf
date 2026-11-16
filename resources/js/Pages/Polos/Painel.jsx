@@ -1402,7 +1402,7 @@ export default function PolosPainel({
                                 ) : (
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                            <HeroKpi titulo={cockpit.metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (móveis)'}
+                                            <HeroKpi titulo={cockpit.metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (categorias da meta)'}
                                                 valor={formatCurrency(totalFatProjeto)} icone={Wallet} glow="yellow"
                                                 sublabel={cockpit.mesRefLabel ? `${cockpit.mesRefLabel} · ${parcial ? 'parcial' : 'fechado'} · M1–M4` : 'M1–M4'}
                                                 extra={fatPorFase.length > 0 ? <FaturamentoPorFase fases={fatPorFase} total={totalFatProjeto} /> : null} />

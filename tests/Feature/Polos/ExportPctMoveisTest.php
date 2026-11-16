@@ -111,18 +111,18 @@ class ExportPctMoveisTest extends TestCase
 
         $aba = $planilha->getActiveSheet();
 
-        // Localiza a coluna "% móveis" pelo cabeçalho em vez de fixar a letra — a ordem
-        // das colunas já mudou mais de uma vez.
+        // Localiza a coluna "% nas categorias da meta" (até 16/11/2026, "% móveis") pelo
+        // cabeçalho em vez de fixar a letra — a ordem das colunas já mudou mais de uma vez.
         $coluna = null;
         foreach ($aba->getRowIterator(1, 1) as $linha) {
             foreach ($linha->getCellIterator() as $celula) {
-                if (trim((string) $celula->getValue()) === '% móveis') {
+                if (trim((string) $celula->getValue()) === '% nas categorias da meta') {
                     $coluna = $celula->getColumn();
                 }
             }
         }
 
-        $this->assertNotNull($coluna, 'A exportação de admin precisa trazer a coluna "% móveis".');
+        $this->assertNotNull($coluna, 'A exportação de admin precisa trazer a coluna "% nas categorias da meta".');
 
         $valor = (float) $aba->getCell($coluna . '2')->getValue();
 

@@ -7,6 +7,7 @@ use App\Models\PoloFaturamentoSnapshot;
 use App\Services\AdmanService;
 use App\Services\MlCategoriaService;
 use App\Services\Polos\AdsCampanhasPolos;
+use App\Services\Polos\CategoriasDaMetaPolos;
 use App\Support\CustId;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -137,6 +138,10 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         $idsPorCust = $campanhas ? AdsCampanhasPolos::mapaIds() : [];
         $comStatusAds = 0;
 
+        // Categorias do ML que contam para a meta neste mês (TKT-0036): de 202611 em diante,
+        // a lista configurável; antes, só Casa, Móveis e Decoração (mês fechado não muda).
+        $categoriasDaMeta = CategoriasDaMetaPolos::doMes($mes);
+
         $ok = 0; $comFat = 0; $comAds = 0; $processados = 0;
         foreach ($empresas as $i => $emp) {
             if ($orcamento !== null && time() - $inicio > $orcamento) {
@@ -160,22 +165,23 @@ class SyncPolosFaturamentoJob implements ShouldQueue
                 }
                 $ok++;
 
-                // Faturamento SÓ "Casa, Móveis e Decoração" (raiz MLB1574): soma o
-                // netBilling dos itens cuja categoria-raiz é Móveis. É o valor que o
-                // /polos passa a servir no lugar do gross total da conta.
-                $moveis = 0.0;
+                // Faturamento só das CATEGORIAS DA META (até out/2026, só a raiz "Casa,
+                // Móveis e Decoração"): soma o netBilling dos itens que estão dentro de
+                // alguma delas. É o valor que o /polos serve no lugar do gross da conta.
+                $daMeta = 0.0;
                 foreach ($r['net_por_categoria'] as $catId => $net) {
-                    if ($categoria->ehCasaMoveisDecoracao((string) $catId)) {
-                        $moveis += $net;
+                    if ($categoria->pertenceAAlguma((string) $catId, $categoriasDaMeta)) {
+                        $daMeta += $net;
                     }
                 }
-                if ($moveis > 0) {
+                if ($daMeta > 0) {
                     $comFat++;
                 }
 
                 $dados = [
                     'faturamento'        => $r['gross_billing'], // gross total da conta (referência/auditoria)
-                    'faturamento_moveis' => $moveis,             // net só Móveis (servido no painel)
+                    // A coluna guarda as categorias da meta; o nome ficou de quando era só móveis.
+                    'faturamento_moveis' => $daMeta,
                     'synced_at'          => now(),
                 ];
 

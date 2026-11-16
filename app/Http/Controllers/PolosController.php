@@ -844,9 +844,10 @@ class PolosController extends Controller
             $cols[] = ['key' => 'fin_meta',        'label' => 'Meta',        'tipo' => 'dinheiro'];
             $cols[] = ['key' => 'fin_pct',         'label' => '% da meta',   'tipo' => 'percentual'];
             $cols[] = ['key' => 'fin_ads',         'label' => 'ADS',         'tipo' => 'dinheiro'];
-            // Fatia de Casa/Móveis no gross — sinaliza quem não vende móvel num polo
-            // moveleiro. NÃO entra em meta/status: é insumo de curadoria de roster.
-            $cols[] = ['key' => 'fin_pct_moveis', 'label' => '% móveis',    'tipo' => 'percentual'];
+            // Fatia das categorias da meta no gross (até out/2026, só Casa/Móveis) — sinaliza
+            // quem vende fora do que a meta conta. NÃO entra em meta/status: é insumo de
+            // curadoria de roster.
+            $cols[] = ['key' => 'fin_pct_moveis', 'label' => '% nas categorias da meta', 'tipo' => 'percentual'];
             $cols[] = ['key' => 'fin_status',      'label' => 'Status',      'tipo' => 'texto'];
         }
 
@@ -1796,7 +1797,7 @@ class PolosController extends Controller
             ['key' => 'fase',          'label' => 'Fase',        'tipo' => 'texto'],
             ['key' => 'responsavel',   'label' => 'Responsável', 'tipo' => 'texto'],
             ['key' => 'status',        'label' => 'Status',      'tipo' => 'texto'],
-            ['key' => 'faturamento',   'label' => $d['metricaFaturamento'] === self::METRICA_GROSS ? 'Faturamento' : 'Faturamento (móveis)', 'tipo' => 'dinheiro'],
+            ['key' => 'faturamento',   'label' => $d['metricaFaturamento'] === self::METRICA_GROSS ? 'Faturamento' : 'Faturamento (categorias da meta)', 'tipo' => 'dinheiro'],
             ['key' => 'faturamento_fonte', 'label' => 'Fonte do faturamento', 'tipo' => 'texto', 'largura' => 34],
             ['key' => 'meta',          'label' => 'Meta',        'tipo' => 'dinheiro'],
             ['key' => 'pct',           'label' => '% da meta',   'tipo' => 'percentual'],
@@ -2739,7 +2740,10 @@ class PolosController extends Controller
         }
     }
 
-    /** Métrica de faturamento do painel: só Casa/Móveis (raiz MLB1574). */
+    /**
+     * Métrica de faturamento do painel: só as categorias da meta (até out/2026, só a raiz
+     * Casa/Móveis MLB1574; ver Polos\CategoriasDaMetaPolos). O valor do toggle segue "moveis".
+     */
     public const METRICA_MOVEIS = 'moveis';
 
     /** Métrica de faturamento do painel: gross da conta inteira, todas as categorias. */
@@ -2879,10 +2883,11 @@ class PolosController extends Controller
     }
 
     /**
-     * Faturamento só da raiz "Casa, Móveis e Decoração" (MLB1574), em netBilling por item.
-     * Alimenta a coluna "% móveis" da exportação, que existe mesmo quando a métrica
-     * vigente já é móveis: lá o número é a RAZÃO móveis/gross, útil para curadoria de
-     * roster ("essa empresa vende móvel mesmo?"). Ver faturamentoAdmanDoMes().
+     * Faturamento só das categorias da meta (até out/2026, só a raiz "Casa, Móveis e
+     * Decoração" MLB1574; ver Polos\CategoriasDaMetaPolos), em netBilling por item.
+     * Alimenta a coluna "% nas categorias da meta" da exportação, que existe mesmo quando a
+     * métrica vigente já é essa: lá o número é a RAZÃO sobre o gross, útil para curadoria de
+     * roster ("essa empresa vende o que a meta conta?"). Ver faturamentoAdmanDoMes().
      *
      * @param  array<array<string,mixed>>  $ativos
      * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]

@@ -232,7 +232,7 @@ export default function PolosIndex({
                 {temDados && visiveis.length > 0 && (
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                         <HeroKpi
-                            titulo={metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (móveis)'}
+                            titulo={metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (categorias da meta)'}
                             valor={formatCurrency(totalFat)}
                             icone={Wallet}
                             glow="yellow"
