@@ -854,3 +854,28 @@ ativas). O suporte deles respondeu "está OK" — e estava: a conta só mudou de
   HOME & HOBBY, Idea Home, ReyJef) — isso é cadastro na Adman, não código.
 - Rate limit (10 req/min) é por chave: separar as chaves também tirou os Polos da disputa de
   cota com o `adman:sync` de Performance.
+
+---
+
+## 21. A meta deixou de ser "só móveis" em nov/2026 — e a coluna manteve o nome (TKT-0036, 16/11/2026)
+
+A pedido da Débora, com decisão do Maycon, a meta passou a somar as categorias de
+`App\Services\Polos\CategoriasDaMetaPolos`: Casa, Móveis e Decoração (MLB1574), Construção
+(MLB1500), Indústria e Comércio (MLB1499), Bebês (MLB1384) e Brinquedos > Mesas e Cadeiras
+(MLB270072). Isso reabre o que §11.2, §12.4 e o caso MSI (23/09) tratavam como fechado.
+Quatro coisas não se deduzem do código:
+
+- **`faturamento_moveis` não quer mais dizer "móveis".** De 202611 em diante, a coluna guarda
+  as categorias da meta. O nome ficou para evitar uma migration em tabela com dado de
+  produção. Comparar móveis de outubro com novembro é comparar duas réguas.
+- **Mês fechado não foi recalculado, de propósito.** Mês anterior a 202611 continua só com
+  MLB1574, inclusive pelo botão Sincronizar. Para recalcular outubro, mude `MES_INICIO` e rode
+  `polos:warm --mes=202610`, sabendo que o roster congelado e a virada (§12, §20) leem esse mês.
+- **Metade da lista dela já contava.** Banheiros, Camas/Colchões, Cozinha, Organização para
+  Casa e Móveis para Jardim ficam dentro de MLB1574. "Banheiros" e "Cozinha" também existem
+  em Construção (Mobiliário para Banheiros/Cozinhas, onde a MSI vende). Quando alguém pedir
+  "categoria X", confira na árvore do ML (`GET /categories/{id}`, API pública) antes de mexer.
+- **Construção e Indústria e Comércio entraram INTEIRAS** (tintas, pisos, materiais de obra,
+  equipamento de escritório...), porque foi o que ela escreveu. Restringir é trocar a lista em
+  `Configuracao` `polo_meta_categorias` (ids por vírgula, raiz ou subcategoria) e rodar o warm
+  do mês. Não precisa de deploy.
