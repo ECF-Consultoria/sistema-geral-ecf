@@ -277,8 +277,8 @@ class PolosPpaTest extends TestCase
     }
 
     /**
-     * A gaveta mostra os planos da EMPRESA, não só os de quem olha — ao
-     * contrário da lista, que recorta por `mentor_id` para o não-admin.
+     * A gaveta mostra os planos da EMPRESA, não só os de quem olha (a lista
+     * também, desde o TKT-0039).
      */
     public function test_gaveta_mostra_planos_de_outros_responsaveis_para_quem_tem_permissao(): void
     {
@@ -292,6 +292,53 @@ class PolosPpaTest extends TestCase
             ->getJson(route('mlb.polos-ppa.empresa', $empresa))
             ->assertOk()
             ->assertJsonCount(1, 'ppas');
+    }
+
+    /**
+     * TKT-0039: qualquer analista do Polos edita qualquer PPA. A lista deixou de
+     * recortar por `mentor_id` — o plano criado por outro aparece, abre e aceita
+     * incluir e excluir tarefa.
+     */
+    public function test_analista_ve_e_edita_ppa_criado_por_outro(): void
+    {
+        $empresa = $this->empresaPolos();
+        $deOutro = Ppa::create([
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id,
+            'mentor_id' => $this->admin()->id, 'title' => 'Plano de outro', 'status' => 'sent',
+        ]);
+        $analista = $this->userComPermissao('mlb.projetos');
+
+        $this->actingAs($analista)
+            ->get(route('mlb.polos-ppa.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $p) => $p
+                ->has('ppas.data', 1)
+                ->where('ppas.data.0.id', $deOutro->id)
+            );
+
+        $this->actingAs($analista)->get(route('mlb.polos-ppa.kanban', $deOutro))->assertOk();
+
+        $this->actingAs($analista)
+            ->post(route('ppa.tasks.store', $deOutro), ['title' => 'Tarefa do analista'])
+            ->assertSessionHasNoErrors();
+        $tarefa = PpaTask::where('ppa_id', $deOutro->id)->where('title', 'Tarefa do analista')->firstOrFail();
+
+        $this->actingAs($analista)->delete(route('ppa.tasks.destroy', $tarefa))->assertRedirect();
+        $this->assertDatabaseMissing('ppa_tasks', ['id' => $tarefa->id]);
+    }
+
+    /** O PPA de carteira mantém o recorte do UAT de 07/07: não-admin só vê o que criou. */
+    public function test_ppa_de_carteira_continua_recortado_por_quem_criou(): void
+    {
+        Ppa::create([
+            'escopo' => Ppa::ESCOPO_GERAL, 'company_id' => Company::factory()->create()->id,
+            'mentor_id' => $this->admin()->id, 'title' => 'Plano de outro', 'status' => 'sent',
+        ]);
+
+        $this->actingAs(User::factory()->create(['role' => 'consultor']))
+            ->get(route('ppa.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $p) => $p->has('ppas.data', 0));
     }
 
     // ─── Acesso ──────────────────────────────────────────────────────────────

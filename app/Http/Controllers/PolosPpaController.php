@@ -31,8 +31,6 @@ class PolosPpaController extends Controller
 
     public function index(Request $request, PpaListaService $lista)
     {
-        $user = $request->user();
-
         // Mesma régua de ordenação do PPA de carteira (e da tela, que é a
         // mesma): em andamento, a fazer, concluído — ver
         // `Ppa::scopeOrdenadoPorAtencao`.
@@ -46,11 +44,9 @@ class PolosPpaController extends Controller
             ->daSituacao($filtros['situacao'])
             ->ordenadoPorAtencao($filtros['ordem']);
 
-        // Mesmo recorte do PPA de carteira: não-admin só vê o que ele criou.
-        if (! $user->isAdmin()) {
-            $query->where('mentor_id', $user->id);
-        }
-
+        // Sem recorte por `mentor_id` (TKT-0039): no Polos qualquer analista edita
+        // qualquer PPA — quem tem `mlb.projetos` vê os planos de todos. O de
+        // carteira (PpaController::index) mantém o recorte do UAT de 07/07.
         $ppas = $query->paginate(20)->through(fn ($p) => $lista->linha($p));
 
         return Inertia::render('Polos/Ppa/Index', [
@@ -174,10 +170,10 @@ class PolosPpaController extends Controller
      * da mesma empresa e esconder seria mentir que não há.
      *
      * Rascunho entra: quem olha é a equipe, não o cliente. E todos os planos da
-     * empresa, não só os de quem está olhando — a lista do PPA recorta por
-     * `mentor_id` para arrumar a tela de cada um, mas o quadro de qualquer
-     * plano já abre para quem tem acesso; na gaveta a pergunta é "o que foi
-     * planejado para esta empresa", e ela só tem resposta com todos.
+     * empresa, não só os de quem está olhando — desde o TKT-0039 a lista do
+     * PPA Polos também mostra os planos de todos, e o quadro de qualquer plano
+     * abre para quem tem acesso; na gaveta a pergunta é "o que foi planejado
+     * para esta empresa", e ela só tem resposta com todos.
      *
      * Ordem = a mesma régua da lista ({@see Ppa::scopeOrdenadoPorAtencao}).
      */

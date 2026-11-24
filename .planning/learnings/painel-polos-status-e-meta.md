@@ -538,9 +538,11 @@ O que vale para quem mexer ali:
   indexado só por `cust_id`: trocar o mês com a gaveta aberta mostrava as semanas do mês
   anterior. Hoje a chave é `${cust_id}|${mes}`.
 - Os PPAs da gaveta (`mlb.polos-ppa.empresa`) trazem **todos os planos da empresa**, de
-  qualquer responsável e com rascunho — ao contrário da lista do PPA, que recorta por
-  `mentor_id` para o não-admin. O recorte da lista é arrumação de tela, não barreira: o
-  quadro de qualquer plano já abre para quem tem acesso.
+  qualquer responsável e com rascunho. A lista `/mlb/polos-ppa` também deixou de recortar
+  por `mentor_id` em 24/11/2026 (TKT-0039: "qualquer analista edita qualquer PPA"); quem
+  tem `mlb.projetos` vê, abre e edita os planos de todos. O PPA de **carteira** (`/ppa`)
+  continua recortado por quem criou (UAT de 07/07). O cliente não inclui tarefa: Portal e
+  workspace só movem/atualizam.
 
 ## 14. O card de faturamento e o "% Geral da meta" contam empresas diferentes — de propósito (2026-09-30)
 

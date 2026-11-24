@@ -85,8 +85,9 @@ class PpaTool extends FerramentaEcf
             ->daSituacao($filtros['situacao'])
             ->ordenadoPorAtencao(null);
 
-        // Mesmo recorte das duas telas: não-admin só vê o que criou.
-        if (! $usuario->isAdmin()) {
+        // Mesmo recorte das duas telas: na carteira, não-admin só vê o que criou;
+        // nos Polos, quem tem acesso vê os planos de todos (TKT-0039).
+        if ($escopo === Ppa::ESCOPO_GERAL && ! $usuario->isAdmin()) {
             $consulta->where('mentor_id', $usuario->id);
         }
 

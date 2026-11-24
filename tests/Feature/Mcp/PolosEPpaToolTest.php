@@ -128,4 +128,18 @@ class PolosEPpaToolTest extends TestCase
         $comProjetos = $this->comPermissoes(['mlb.projetos'], 'mentor');
         $this->assertSame(0, $this->ferramenta($comProjetos, 'ppa', ['escopo' => 'polos'])['total']);
     }
+
+    /** TKT-0039: nos Polos o não-admin vê os planos de todos — igual a /mlb/polos-ppa. */
+    public function test_ppa_dos_polos_mostra_planos_de_outros_igual_a_tela(): void
+    {
+        $empresa = MlbEmpresa::create(['nome' => 'Polo PPA', 'projeto' => 'POLOS', 'polo' => 'Arapongas', 'fase' => 'M2']);
+        Ppa::create(['escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id, 'mentor_id' => $this->admin()->id, 'title' => 'Plano de outro', 'status' => 'sent']);
+
+        $analista = $this->comPermissoes(['mlb.projetos'], 'mentor');
+        $mcp = $this->ferramenta($analista, 'ppa', ['escopo' => 'polos']);
+
+        $this->assertSame(['Plano de outro'], collect($mcp['itens'])->pluck('titulo')->all());
+        $tela = $this->actingAs($analista)->get(route('mlb.polos-ppa.index'))->viewData('page')['props']['ppas'];
+        $this->assertSame($tela['total'], $mcp['total']);
+    }
 }
