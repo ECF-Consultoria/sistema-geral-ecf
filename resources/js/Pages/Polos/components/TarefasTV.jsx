@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { spansDosCartoes, fileirasDosSpans } from '@/lib/polosTarefas';
+import { TITULO_FATURAMENTO_TOTAL } from './rotuloFaturamento';
 
 /**
  * Tela "Tarefas" do Modo TV (TKT-0017) — o desenho anexado ao ticket, reproduzido como ele é
@@ -271,7 +272,7 @@ export default function TarefasTV({
                                 <div className="min-w-0 border-l border-white/[0.1] pl-[24px]">
                                     <div className="flex items-center gap-[14px]">
                                         <ChartColumnBig size={36} color={AMARELO} strokeWidth={2} className="shrink-0" />
-                                        <span className="uppercase leading-[1.25] text-white/85" style={{ fontSize: 13.5, letterSpacing: '0.06em' }}>Faturamento total</span>
+                                        <span className="uppercase leading-[1.25] text-white/85" style={{ fontSize: 13.5, letterSpacing: '0.06em' }}>{TITULO_FATURAMENTO_TOTAL}</span>
                                     </div>
                                     <div className="mt-[24px] whitespace-nowrap font-extrabold leading-none tabular-nums"
                                          style={{ fontSize: 37, color: AMARELO }}>{vg.faturamento ?? '—'}</div>

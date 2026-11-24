@@ -11,6 +11,7 @@ import { useAnunciarModoTv } from '@/hooks/useModoTv';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
 import FatVsMetaChart, { origemFaturamento } from './FatVsMetaChart';
+import { TITULO_FATURAMENTO_TOTAL, apoioDaMeta } from './rotuloFaturamento';
 import StatusDonut from './StatusDonut';
 import TarefasTV from './TarefasTV';
 
@@ -449,7 +450,7 @@ export default function ModoTV({
             semFaturamento,
             faturamento: temCk ? formatCurrency(totalFatProjeto) : null,
             faturamentoApoio: temCk
-                ? (metaFat > 0 ? `M2–M4: ${pctFat}% da meta ${formatCurrencyCompact(metaFat)}` : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`)
+                ? (metaFat > 0 ? apoioDaMeta(pctFat, formatCurrencyCompact(metaFat)) : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`)
                 : 'só para admin',
         };
     }, [temCk, polosCk, cockpit, universoT, totalFatProjeto, metaFat, pctFat, mesRefFat, parcial]);
@@ -655,11 +656,11 @@ export default function ModoTV({
                             {/* O mês e o "parcial" já estão no cabeçalho: a linha de apoio deste
                                 card rende mais carregando a META, que sumiria da tela junto com
                                 a barra do herói antigo. */}
-                            <CardTV titulo="Faturamento total" icone={Wallet}
+                            <CardTV titulo={TITULO_FATURAMENTO_TOTAL} icone={Wallet}
                                     cor={metaFat > 0 && pctFat >= 100 ? HEX.green : HEX.yellow}
                                     valor={formatCurrency(totalFatProjeto)}
                                     sublabel={metaFat > 0
-                                        ? `M2–M4: ${pctFat}% da meta ${formatCurrencyCompact(metaFat)}`
+                                        ? apoioDaMeta(pctFat, formatCurrencyCompact(metaFat))
                                         : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`} />
                             <CardTV titulo="Empresas ativas" icone={Building2}
                                     valor={fmtInt(totalAtiv)}

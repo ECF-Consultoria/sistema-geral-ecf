@@ -558,6 +558,12 @@ o número do card pela meta chega a 117% e vai achar que o 104% está errado. Os
 dizem "M1–M4" e "base M2–M4" exatamente por isso — **não unifique os dois números**, e não
 passe a dividir o total pela meta: M1 é onboarding e nunca teve meta (D-01).
 
+No **Modo TV** os dois números dividem UM card (telas Faturamento e Tarefas). Até 24/11 a única
+etiqueta dele era "M2–M4: X% da meta", e o total foi lido como M2–M4 (TKT-0038: "o painel só
+traz M2 a M4"). Hoje o título é "Faturamento total · M1–M4" e o apoio "Meta (M2–M4): X% de
+R$ Y" — os dois textos moram em `components/rotuloFaturamento.js`. O gráfico por polo
+("Faturamento vs meta") continua M2–M4 contra a meta, de propósito.
+
 O que não é óbvio lendo o código:
 
 - **M0 fica fora do total, mas dentro da coorte M1.** O card "Coorte M1" é M1 + M0 (D-16);
