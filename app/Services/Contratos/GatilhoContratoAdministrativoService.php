@@ -85,6 +85,14 @@ class GatilhoContratoAdministrativoService
             }
         }
 
+        // 1b. Virada do V4 (24/11/2026) — empresa da Consultoria que o Sistema
+        // ECF V4 assumiu (já existia aqui sem contrato). O contrato dela sai
+        // pelo V4; gerar aqui mandaria dois contratos ao cliente. Vale para
+        // TODOS os caminhos porque todos passam por `avaliar()`.
+        if (in_array((int) $company->id, (array) config('services.hubspot.consultoria_v4_empresas', []), true)) {
+            return ['status' => 'consultoria_v4', 'pendencias' => [], 'motivo' => 'contrato pelo Sistema ECF V4'];
+        }
+
         // 2. Reentrância (D-04): "o ideal é nem chegar lá" — checagem de
         // código ANTES dos portões, não confiando só na trava composta do
         // banco (Fase 127).

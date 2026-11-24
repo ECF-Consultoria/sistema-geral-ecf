@@ -210,6 +210,28 @@ class HubspotWebhookController extends Controller
                 app(RenovacaoWebhookHandler::class)->tratar($evento, $api);
                 return;
             }
+
+            // 24/11/2026 — virada do V4: cliente novo do Pipeline Consultoria entra
+            // pelo Sistema ECF V4, não aqui. Depois da idempotência de propósito:
+            // deal que já virou empresa no Admin nunca chega até esta linha.
+            if (
+                config('services.hubspot.consultoria_entrada_v4')
+                && (string) ($deal['properties']['pipeline'] ?? '') === (string) config('services.hubspot.pipeline_consultoria_id')
+            ) {
+                $evento->update([
+                    'status'        => 'ignorado',
+                    'erro_msg'      => 'Pipeline Consultoria: cliente novo entra pelo Sistema ECF V4 desde 24/11/2026',
+                    'processado_em' => now(),
+                ]);
+                Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Pipeline Consultoria — entrada pelo V4, ignorado', [
+                    'evento_id' => $evento->id,
+                    'deal_id'   => $evento->object_id,
+                    'stage'     => $evento->property_value,
+                ]);
+
+                return;
+            }
+
             $companyId  = $api->fetchAssociatedCompanyId((string) $evento->object_id);
             $hubCompany = $companyId ? $api->fetchCompany($companyId, array_values($propsCompany)) : null;
 

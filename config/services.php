@@ -168,6 +168,18 @@ return [
         'stage_ganho_consultoria_id'   => env('HUBSPOT_STAGE_GANHO_CONSULTORIA_ID', 'closedwon'),
         'stage_perdido_consultoria_id' => env('HUBSPOT_STAGE_PERDIDO_CONSULTORIA_ID', 'closedlost'),
         'avancar_deal_ativo'           => (bool) env('HUBSPOT_AVANCAR_DEAL_ATIVO', true),
+        // 24/11/2026 — virada do Sistema ECF V4. A entrada de cliente NOVO do
+        // Pipeline Consultoria (contrato Clicksign, 1ª cobrança, grupo e
+        // boas-vindas) passou para o V4. Ligada, o webhook ignora deal do
+        // Pipeline Consultoria que ainda não virou empresa aqui — Polos,
+        // Infoprodutos e Renovações seguem iguais. O que já nasceu no Admin
+        // continua com o Admin (idempotência do deal vem antes desta checagem).
+        // `consultoria_v4_empresas`: empresas que já existiam aqui SEM contrato e
+        // que o V4 assumiu — a geração de contrato delas fica bloqueada em todos
+        // os caminhos (botão, observers, webhook). Ver
+        // .planning/learnings/virada-v4-consultoria.md.
+        'consultoria_entrada_v4'       => (bool) env('HUBSPOT_CONSULTORIA_ENTRADA_V4', false),
+        'consultoria_v4_empresas'      => array_values(array_filter(array_map('intval', explode(',', (string) env('HUBSPOT_CONSULTORIA_V4_EMPRESAS', ''))))),
         'portal_id'                    => env('HUBSPOT_PORTAL_ID'),
         // Fase 202 — renovação contratual. IDs do pipeline "Renovações contrato"
         // MEDIDOS em 06/11/2026 via GET /crm/v3/pipelines/deals. Se o Comercial

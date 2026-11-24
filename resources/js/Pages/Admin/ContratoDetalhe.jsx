@@ -221,6 +221,7 @@ export default function ContratoDetalhe({
         ja_em_andamento:      'Já existe um contrato em andamento para um dos serviços desta empresa.',
         aguardando_comercial: 'Ainda há uma pendência comercial nesta empresa antes de gerar o contrato.',
         isento:               'Nenhum serviço desta empresa passa por contrato.',
+        consultoria_v4:       'O contrato deste cliente sai pelo Sistema ECF V4, não por aqui.',
         // Quick 260821-l8n — empresa Mons Bike: mesmo serviço lançado duas
         // vezes no HubSpot (ex.: pagamento parcelado em mais de uma linha).
         //

@@ -711,6 +711,7 @@ class ContratoAdminController extends Controller
                 $avaliacao['status'] === 'ja_em_andamento'        => 'ja_em_andamento',
                 $avaliacao['status'] === 'aguardando_comercial'   => 'aguardando_comercial',
                 $avaliacao['status'] === 'isento'                 => 'isento',
+                $avaliacao['status'] === 'consultoria_v4'         => 'consultoria_v4',
                 default                                           => null,
             };
         }
@@ -1533,6 +1534,10 @@ class ContratoAdminController extends Controller
         }
 
         $avaliacao = $gatilho->avaliar($company);
+
+        if ($avaliacao['status'] === 'consultoria_v4') {
+            return back()->with('error', 'O contrato deste cliente sai pelo Sistema ECF V4, não por aqui — gerar aqui mandaria dois contratos ao cliente.');
+        }
 
         if (! $dados->estaPronta($company) || $avaliacao['status'] !== 'elegivel') {
             // Quick 260819-guy — Tarefa 7 item 2: antes era `abort(422, ...)`,
