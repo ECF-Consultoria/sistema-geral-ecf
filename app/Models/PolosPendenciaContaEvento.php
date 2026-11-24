@@ -21,6 +21,13 @@ class PolosPendenciaContaEvento extends Model
     /** Agenda (fatia 2): o dia planejado pelo Analista de Conta mudou. `de`/`para` = AAAA-MM-DD ou nulo. */
     public const DATA_PLANEJADA = 'data_planejada';
     public const PRIORIDADE     = 'prioridade';
+    /**
+     * Reprogramação (TKT-0041): prazo pedido E dia planejado levados para a mesma data.
+     * `de`/`para` = o prazo (AAAA-MM-DD); o dia planejado anterior e o novo vão em `meta`
+     * (`data_planejada_de`/`data_planejada_para`), o motivo em `texto` e o motivo pronto, quando
+     * escolhido, em `meta.motivo` (ex.: `meta_batida`), para filtrar depois.
+     */
+    public const REPROGRAMADA   = 'reprogramada';
 
     protected $fillable = ['pendencia_id', 'user_id', 'tipo', 'de', 'para', 'texto', 'meta'];
 

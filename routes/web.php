@@ -1767,6 +1767,7 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/polos-painel/analista-conta/acompanhamento',                 [PolosPendenciaContaController::class, 'acompanhamento'])->name('polos-painel.analista-conta.acompanhamento');
     Route::post('/polos-painel/pendencias-conta',                             [PolosPendenciaContaController::class, 'store'])->name('polos-painel.pendencias-conta.store');
     Route::post('/polos-painel/pendencias-conta/planejar',                    [PolosPendenciaContaController::class, 'planejar'])->name('polos-painel.pendencias-conta.planejar');
+    Route::post('/polos-painel/pendencias-conta/reprogramar',                 [PolosPendenciaContaController::class, 'reprogramar'])->name('polos-painel.pendencias-conta.reprogramar');
     Route::post('/polos-painel/pendencias-conta/{pendencia}/prioridade',      [PolosPendenciaContaController::class, 'prioridade'])->name('polos-painel.pendencias-conta.prioridade');
     Route::post('/polos-painel/pendencias-conta/{pendencia}/status',          [PolosPendenciaContaController::class, 'status'])->name('polos-painel.pendencias-conta.status');
     Route::post('/polos-painel/pendencias-conta/{pendencia}/concluir',        [PolosPendenciaContaController::class, 'concluir'])->name('polos-painel.pendencias-conta.concluir');

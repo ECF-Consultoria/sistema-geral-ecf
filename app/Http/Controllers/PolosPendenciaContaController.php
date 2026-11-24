@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MlbEmpresa;
 use App\Models\PolosPendenciaConta;
 use App\Models\PolosPendenciaContaAnexo;
+use App\Services\Polos\FilaRevisaoPolos;
 use App\Services\Polos\PendenciasContaPolos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +23,8 @@ use Inertia\Response;
  *
  * Acesso: ver = admin, `mlb.analista_conta` ou quem abre a fila de revisão
  * (`mlb.faturamento_polos`); operar (status, concluir) = admin ou `mlb.analista_conta`;
- * encaminhar = admin ou o responsável da empresa.
+ * encaminhar = admin ou o responsável da empresa; reprogramar prazo e dia (TKT-0041) = o
+ * Analista de Conta, admin ou o responsável da empresa (só as da carteira dele).
  */
 class PolosPendenciaContaController extends Controller
 {
@@ -40,10 +42,16 @@ class PolosPendenciaContaController extends Controller
         $user = $request->user();
         abort_unless($user && PendenciasContaPolos::podeVer($user), 403);
 
+        // Meta do mês de cada empresa (TKT-0041): o mesmo Faturamento Polos da fila de revisão.
+        [$faturamento, $avisoMeta] = FilaRevisaoPolos::faturamentoDoMes();
+
         return Inertia::render('Polos/AnalistaConta/Index', [
-            'fila'       => $this->pendencias->fila(now()),
+            'fila'       => $this->pendencias->fila(now(), $faturamento),
             'opcoes'     => PendenciasContaPolos::opcoes(),
             'podeOperar' => PendenciasContaPolos::podeOperar($user),
+            // Reprogramar (TKT-0041): todas, ou só as da carteira (a tela confere o responsável).
+            'podeReprogramarTodas' => PendenciasContaPolos::podeReprogramarTodas($user),
+            'avisoMeta'  => $avisoMeta,
             'podeAcompanhar' => PendenciasContaPolos::podeAcompanhar($user),
             'eu'         => $user->id,
             // Abre já na pendência do aviso do sino (?pendencia=ID).
@@ -97,7 +105,8 @@ class PolosPendenciaContaController extends Controller
     public function planejar(Request $request): RedirectResponse
     {
         $user = $request->user();
-        abort_unless(PendenciasContaPolos::podePlanejar($user), 403, 'Só o Analista de Conta planeja o dia.');
+        abort_unless(PendenciasContaPolos::podePlanejar($user), 403,
+            'Só o Analista de Conta planeja o dia na agenda. Para mudar o prazo e o dia planejado, use Reprogramar na fila do Analista de Conta.');
 
         $dados = $request->validate([
             'ids'   => ['required', 'array', 'min:1', 'max:300'],
@@ -116,6 +125,50 @@ class PolosPendenciaContaController extends Controller
         $quando = isset($dados['data']) ? 'para ' . Carbon::parse($dados['data'])->format('d/m') : 'sem data';
 
         return back()->with('success', $n === 0 ? 'Nada mudou.' : ($n === 1 ? "Pendência planejada {$quando}." : "{$n} pendências planejadas {$quando}."));
+    }
+
+    /**
+     * Reprogramar (TKT-0041): prazo pedido e dia planejado de uma ou várias pendências para a
+     * mesma data, com motivo opcional. Pode o Analista de Conta, a coordenação (admin) e o
+     * responsável da empresa — este só nas da carteira; as outras do lote são ignoradas.
+     */
+    public function reprogramar(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user && PendenciasContaPolos::podeVer($user), 403);
+
+        $dados = $request->validate([
+            'ids'           => ['required', 'array', 'min:1', 'max:300'],
+            'ids.*'         => ['integer'],
+            'data'          => ['required', 'date', 'after_or_equal:today', function ($attr, $valor, $falha) {
+                if ($valor && Carbon::parse($valor)->isWeekend()) {
+                    $falha('Escolha um dia de semana.');
+                }
+            }],
+            'motivo'        => ['nullable', 'string', 'max:1000'],
+            'motivo_padrao' => ['nullable', Rule::in(array_keys(PendenciasContaPolos::MOTIVOS_REPROGRAMACAO))],
+        ], [
+            'data.required'       => 'Escolha a nova data.',
+            'data.after_or_equal' => 'A nova data não pode ser antes de hoje.',
+        ]);
+
+        $r = $this->pendencias->reprogramar($dados['ids'], $dados['data'], $user, $dados['motivo'] ?? null, $dados['motivo_padrao'] ?? null);
+
+        abort_if($r['mudaram'] === 0 && $r['sem_permissao'] > 0 && $r['encerradas'] === 0, 403,
+            'Só o Analista de Conta, a coordenação ou o responsável da empresa reprograma a pendência.');
+
+        $dia    = Carbon::parse($dados['data'])->format('d/m');
+        $msg    = match ($r['mudaram']) {
+            0       => 'Nada mudou.',
+            1       => "Pendência reprogramada para {$dia}.",
+            default => "{$r['mudaram']} pendências reprogramadas para {$dia}.",
+        };
+        $fora = array_filter([
+            $r['sem_permissao'] > 0 ? "{$r['sem_permissao']} fora da sua carteira" : null,
+            $r['encerradas'] > 0 ? "{$r['encerradas']} já encerrada(s)" : null,
+        ]);
+
+        return back()->with('success', $msg . ($fora ? ' Ficaram como estavam: ' . implode(', ', $fora) . '.' : ''));
     }
 
     /** Prioridade: quem pediu pode subir para pedir antecipação; o Analista de Conta, ajustar. */

@@ -775,6 +775,18 @@ nas três fatias da DEV-58.
   dia. Testes com usuário `consultor` não pegam isso — o perfil real dos analistas é que manda.
   Setor `is_system` (Administração, Desenvolvimento) NÃO conta: salvar as permissões dele grava
   o catálogo inteiro (`SetorController::syncPermissoes`), e todo admin viraria Analista de Conta.
+- **Reprogramar é outra porta (TKT-0041, 24/11/2026).** A Débora pediu que a coordenação e o
+  analista de Ads mudem prazo e dia: no fim do mês as empresas que já bateram a meta vão para
+  depois do fechamento. A ação `reprogramar` leva o prazo pedido E o dia planejado para a mesma
+  data (dia útil, de hoje em diante), de uma ou várias. Pode o Analista de Conta, admin
+  (coordenação) e o responsável da empresa, só nas da carteira dele (`podeReprogramar`, por
+  pendência; o resto do lote é ignorado e contado). O arrastar da agenda (`planejar`) continua
+  só do Analista de Conta. O prazo anterior e o dia anterior ficam no evento `reprogramada`
+  (`de` = prazo, `meta.data_planejada_de`), o motivo em `texto` e o motivo pronto em
+  `meta.motivo` (`meta_batida`). Reprogramar não torna a coordenação "quem pegou" (`analista_id`).
+- **"Meta batida" na fila** = faturamento ≥ meta do mês no Faturamento Polos (pct ≥ 100, o
+  mesmo "No alvo" da fila de revisão), lido por `FilaRevisaoPolos::faturamentoDoMes()`. M1 ou
+  empresa sem a linha do mês = sem selo (null), não "não bateu".
 - **`data_planejada` já existe na tabela** desde a fatia 1, para a agenda semanal não precisar
   de migration em tabela com dado em produção. Não crie outra coluna para isso.
 - **Devolvida volta para Aberta sozinha** quando quem pediu comenta (como o ticket faz com a

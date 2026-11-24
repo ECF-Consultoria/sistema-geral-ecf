@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, Check, Eye, MessageSquareText, Paperclip, RotateCcw, Search, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Check, Eye, Info, MessageSquareText, Paperclip, RotateCcw, Search, Target, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import { cn } from '@/lib/utils';
-import { AbasAnalistaConta, CLASSE_ENTRADA, Campo, Historico, ListaMlbs, SeletorPrioridade, SeloPlanejada, SeloPrazo, SeloPrioridade,
-         SeloStatus } from '../components/PendenciasConta';
+import { cn, formatCurrency } from '@/lib/utils';
+import { AbasAnalistaConta, CLASSE_ENTRADA, Campo, Historico, ListaMlbs, Opcao, SeletorPrioridade, SeloPlanejada, SeloPrazo, SeloPrioridade,
+         SeloStatus, hojeIso } from '../components/PendenciasConta';
 
 // Inertia: filtros e o que está aberto sobrevivem a cada gravação (a página recarrega só as props).
 const OPCOES_GRAVAR = { preserveScroll: true, preserveState: true };
@@ -21,15 +21,19 @@ const soParaHoje = (empresas) => empresas
     .map((e) => ({ ...e, pendencias: e.pendencias.filter((p) => p.para_hoje) }))
     .filter((e) => e.pendencias.length > 0);
 
-const FILTROS_PADRAO = { busca: '', solicitante: 'todos', tipo: 'todos', status: 'todos', fase: 'todas', atrasadas: false };
+const FILTROS_PADRAO = { busca: '', solicitante: 'todos', tipo: 'todos', status: 'todos', fase: 'todas', meta: 'todas', atrasadas: false };
 
 const normaliza = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Meta do mês da empresa (TKT-0041): "nao" = tem meta e ainda não bateu; sem meta (M1) fica fora dos dois.
+const passaMeta = (e, f) => f.meta === 'todas' || (f.meta === 'bateu' ? e.meta?.bateu === true : (e.meta != null && !e.meta.bateu));
 
 /** Filtra pendência a pendência; a empresa some quando nenhuma dela passa. */
 function filtrar(empresas, f) {
     const termo = normaliza(f.busca.trim());
     return empresas
         .filter((e) => f.fase === 'todas' || e.fase === f.fase)
+        .filter((e) => passaMeta(e, f))
         .filter((e) => !termo || normaliza(e.nome).includes(termo) || String(e.cust_id ?? '').includes(termo))
         .map((e) => ({
             ...e,
@@ -49,10 +53,17 @@ function filtrar(empresas, f) {
  * Quem opera (`mlb.analista_conta` ou admin) muda o status, comenta e conclui com o que foi feito.
  * Os analistas de Ads abrem a mesma tela só para acompanhar o que encaminharam — a empresa segue
  * na carteira e na revisão deles normalmente. Quem opera abre em "Para hoje" (fatia 2).
+ *
+ * Reprogramar (TKT-0041): o Analista de Conta e a coordenação levam o prazo e o dia planejado de
+ * uma pendência, ou de várias marcadas, para outra data; o analista de Ads, só as da carteira dele.
+ * Cada empresa mostra se já bateu a meta do mês, para priorizar as que ainda não bateram.
  */
-export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = false, podeAcompanhar = false, eu = null, foco = null, minhas = false }) {
+export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = false, podeAcompanhar = false, podeReprogramarTodas = false,
+                                             avisoMeta = null, eu = null, foco = null, minhas = false }) {
     const { auth } = usePage().props;
     const veRevisao = (auth?.permissions ?? []).includes('mlb.faturamento_polos');
+    // Mesma regra do servidor (podeReprogramar): todas, ou as da carteira de quem abre a fila de revisão.
+    const podeReprogramarEmpresa = (e) => podeReprogramarTodas || (veRevisao && e.responsavel_id === eu);
 
     const resumo     = fila?.resumo ?? {};
     const abertas    = fila?.abertas ?? [];
@@ -87,6 +98,31 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
     const atalho = (v, extra = {}) => { setVisao(v); setFiltros({ ...FILTROS_PADRAO, ...extra }); };
     const totalPendencias = (empresas) => empresas.reduce((n, e) => n + e.pendencias.length, 0);
 
+    // Seleção em lote para reprogramar (TKT-0041). Guarda ids; o que sumiu da fila sai da contagem.
+    const [selecionados, setSelecionados] = useState(() => new Set());
+    const [reprogramar, setReprogramar]   = useState(null); // ids do diálogo aberto
+    const alternar = (id) => setSelecionados((s) => {
+        const novo = new Set(s);
+        novo.has(id) ? novo.delete(id) : novo.add(id);
+        return novo;
+    });
+    const abertasPorId = useMemo(() => new Map(abertas.flatMap((e) => e.pendencias.map((p) => [p.id, e]))), [abertas]);
+    const marcadas     = [...selecionados].filter((id) => abertasPorId.has(id));
+    const empresasMarcadas = new Set(marcadas.map((id) => abertasPorId.get(id).id)).size;
+    const reprogramaveisVisiveis = visao === 'encerradas' ? [] : lista
+        .filter(podeReprogramarEmpresa)
+        .flatMap((e) => e.pendencias.filter((p) => !p.encerrada).map((p) => p.id));
+    const todasVisiveisMarcadas = reprogramaveisVisiveis.length > 0 && reprogramaveisVisiveis.every((id) => selecionados.has(id));
+    const marcarVisiveis = () => setSelecionados((s) => {
+        const novo = new Set(s);
+        reprogramaveisVisiveis.forEach((id) => (todasVisiveisMarcadas ? novo.delete(id) : novo.add(id)));
+        return novo;
+    });
+    const aoReprogramar = (ids) => {
+        setSelecionados((s) => { const novo = new Set(s); ids.forEach((id) => novo.delete(id)); return novo; });
+        setReprogramar(null);
+    };
+
     return (
         <AppLayout title="Analista de Conta">
             <Head title="Analista de Conta" />
@@ -112,7 +148,8 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                     <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.05] p-3">
                         <Eye size={15} className="text-sky-300 mt-0.5 shrink-0" />
                         <p className="text-sky-100/80 text-xs">
-                            Você acompanha esta fila. Quem muda o status e conclui é o Analista de Conta; você pode comentar nas pendências que encaminhou.
+                            Você acompanha esta fila. Quem muda o status e conclui é o Analista de Conta; você pode comentar nas pendências que encaminhou
+                            {veRevisao && ' e reprogramar as das empresas da sua carteira'}.
                         </p>
                     </div>
                 )}
@@ -160,6 +197,8 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                                  opcoes={[['todos', 'Status: todos'], ...statusDaVisao.map((s) => [s.valor, s.rotulo])]} />
                         <Escolha valor={filtros.fase} onChange={(v) => mudar('fase', v)} titulo="Fase"
                                  opcoes={[['todas', 'Fase: todas'], ...['M1', 'M2', 'M3', 'M4'].map((f) => [f, f])]} />
+                        <Escolha valor={filtros.meta} onChange={(v) => mudar('meta', v)} titulo="Meta do mês"
+                                 opcoes={[['todas', 'Meta: todas'], ['nao', 'Meta ainda não batida'], ['bateu', 'Meta batida']]} />
                         {visao !== 'encerradas' && (
                             <button type="button" onClick={() => mudar('atrasadas', !filtros.atrasadas)} aria-pressed={filtros.atrasadas}
                                     className={cn('rounded-lg border px-3 py-1.5 text-sm transition',
@@ -173,11 +212,38 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                                 <X size={13} /> Limpar
                             </button>
                         )}
+                        {reprogramaveisVisiveis.length > 0 && (
+                            <button type="button" onClick={marcarVisiveis} aria-pressed={todasVisiveisMarcadas}
+                                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-xs font-semibold text-white/70 transition hover:border-white/25">
+                                <CalendarClock size={13} />
+                                {todasVisiveisMarcadas ? 'Desmarcar as visíveis' : `Marcar as ${reprogramaveisVisiveis.length} visíveis para reprogramar`}
+                            </button>
+                        )}
                     </div>
                     {filtrando && (
                         <p className="text-white/40 text-[11px]">Mostrando {totalPendencias(lista)} de {totalPendencias(base)} pendência(s)</p>
                     )}
+                    {avisoMeta && (
+                        <p className="flex items-center gap-1.5 text-[11px] text-amber-200/70"><Info size={12} /> {avisoMeta}</p>
+                    )}
                 </div>
+
+                {/* Barra da seleção (TKT-0041) */}
+                {marcadas.length > 0 && (
+                    <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-ecf-yellow/30 bg-ecf-card/95 p-2.5 shadow-lg backdrop-blur">
+                        <span className="px-1 text-sm font-semibold text-white">
+                            {marcadas.length} pendência(s) de {empresasMarcadas} empresa(s)
+                        </span>
+                        <button type="button" onClick={() => setReprogramar(marcadas)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-ecf-yellow px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-95">
+                            <CalendarClock size={13} /> Reprogramar
+                        </button>
+                        <button type="button" onClick={() => setSelecionados(new Set())}
+                                className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-white/45 hover:text-white">
+                            <X size={13} /> Limpar seleção
+                        </button>
+                    </div>
+                )}
 
                 {/* Lista */}
                 {base.length === 0 ? (
@@ -193,10 +259,20 @@ export default function AnalistaContaIndex({ fila = null, opcoes, podeOperar = f
                     <Vazio texto="Nenhuma pendência com esses filtros." />
                 ) : (
                     <div className="space-y-3">
-                        {lista.map((e) => <CartaoEmpresa key={e.id} e={e} podeOperar={podeOperar} opcoes={opcoes} eu={eu} foco={foco} />)}
+                        {lista.map((e) => (
+                            <CartaoEmpresa key={e.id} e={e} podeOperar={podeOperar} opcoes={opcoes} eu={eu} foco={foco}
+                                           podeReprogramar={podeReprogramarEmpresa(e)} selecionados={selecionados}
+                                           onAlternar={alternar} onReprogramar={(ids) => setReprogramar(ids)} />
+                        ))}
                     </div>
                 )}
             </div>
+
+            {reprogramar && (
+                <ReprogramarDialog ids={reprogramar} opcoes={opcoes}
+                                   empresas={new Set(reprogramar.map((id) => abertasPorId.get(id)?.id)).size}
+                                   onFechar={() => setReprogramar(null)} onFeito={aoReprogramar} />
+            )}
         </AppLayout>
     );
 }
@@ -234,12 +310,13 @@ function Vazio({ texto, ok = false }) {
     );
 }
 
-function CartaoEmpresa({ e, podeOperar, opcoes, eu, foco }) {
+function CartaoEmpresa({ e, podeOperar, opcoes, eu, foco, podeReprogramar, selecionados, onAlternar, onReprogramar }) {
     return (
         <div className={cn('rounded-2xl border bg-white/[0.02]', e.atrasada ? 'border-red-500/25' : 'border-white/[0.08]')}>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-white/[0.06] px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/[0.06] px-4 py-3">
                 <p className="text-white font-semibold">{e.nome}</p>
                 <p className="text-white/45 text-xs">{[e.polo, e.fase, e.cust_id ? `Cust ${e.cust_id}` : 'sem Cust ID'].filter(Boolean).join(' · ')}</p>
+                <SeloMeta meta={e.meta} />
                 <p className="ml-auto text-white/40 text-xs">
                     Carteira de <span className="text-white/65">{e.responsavel ?? 'sem responsável'}</span>
                 </p>
@@ -247,14 +324,46 @@ function CartaoEmpresa({ e, podeOperar, opcoes, eu, foco }) {
             <div className="divide-y divide-white/[0.05]">
                 {e.pendencias.map((p) => (
                     <LinhaPendencia key={p.id} p={p} podeOperar={podeOperar} opcoes={opcoes} emFoco={p.id === foco}
-                                    podeComentar={podeOperar || p.solicitante?.id === eu || e.responsavel_id === eu} />
+                                    podeComentar={podeOperar || p.solicitante?.id === eu || e.responsavel_id === eu}
+                                    podeReprogramar={podeReprogramar && !p.encerrada} marcada={selecionados.has(p.id)}
+                                    onAlternar={onAlternar} onReprogramar={onReprogramar} />
                 ))}
             </div>
         </div>
     );
 }
 
-function LinhaPendencia({ p, podeOperar, opcoes, podeComentar, emFoco }) {
+/** Meta do mês da empresa (TKT-0041): o mesmo "No alvo" (faturamento ≥ meta) da fila de revisão. */
+function SeloMeta({ meta }) {
+    if (!meta) return null;
+    const pct = Math.round(meta.pct);
+    const titulo = `Faturamento do mês ${formatCurrency(meta.faturamento)} de ${formatCurrency(meta.meta)} (Faturamento Polos)`;
+    return meta.bateu ? (
+        <span title={titulo} className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-300">
+            <Target size={11} /> Meta batida · {pct}%
+        </span>
+    ) : (
+        <span title={titulo} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10.5px] font-semibold text-white/70">
+            <Target size={11} /> Meta {pct}% · faltam {formatCurrency(meta.faltam)}
+        </span>
+    );
+}
+
+/** A pendência foi reprogramada (TKT-0041): o prazo anterior e o motivo no title. */
+function SeloReprogramada({ p }) {
+    const r = p.reprogramada;
+    if (!r || p.encerrada) return null;
+    const titulo = [`Reprogramada por ${r.por} em ${r.em}`, r.prazo_era && `prazo era ${r.prazo_era}`, r.motivo].filter(Boolean).join(' · ');
+    return (
+        <span title={titulo}
+              className={cn('inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10.5px] font-semibold',
+                  r.motivo_padrao === 'meta_batida' ? 'bg-emerald-500/10 text-emerald-300/90' : 'bg-sky-400/10 text-sky-300')}>
+            <CalendarClock size={11} /> {r.motivo_padrao === 'meta_batida' ? 'Reprogramada · meta batida' : 'Reprogramada'}
+        </span>
+    );
+}
+
+function LinhaPendencia({ p, podeOperar, opcoes, podeComentar, emFoco, podeReprogramar = false, marcada = false, onAlternar, onReprogramar }) {
     const ref = useRef(null);
     const [historico, setHistorico]   = useState(emFoco);
     const [comentando, setComentando] = useState(false);
@@ -287,14 +396,20 @@ function LinhaPendencia({ p, podeOperar, opcoes, podeComentar, emFoco }) {
     const manuais = (opcoes?.status ?? []).filter((s) => (opcoes?.status_manuais ?? []).includes(s.valor) && s.valor !== 'cancelada');
 
     return (
-        <div ref={ref} className={cn('px-4 py-3', emFoco && 'bg-ecf-yellow/[0.04] ring-1 ring-inset ring-ecf-yellow/30')}>
+        <div ref={ref} className={cn('px-4 py-3', emFoco && 'bg-ecf-yellow/[0.04] ring-1 ring-inset ring-ecf-yellow/30', marcada && 'bg-ecf-yellow/[0.03]')}>
             <div className="flex flex-col gap-3 md:flex-row md:items-start">
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
+                        {podeReprogramar && (
+                            <input type="checkbox" checked={marcada} onChange={() => onAlternar(p.id)} aria-label="Marcar para reprogramar"
+                                   title="Marcar para reprogramar"
+                                   className="mr-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0 focus:ring-offset-0" />
+                        )}
                         {podeComentar && !p.encerrada ? <SeletorPrioridade p={p} opcoes={opcoes?.prioridades ?? []} /> : <SeloPrioridade p={p} />}
                         <span className="text-white/90 text-sm font-semibold">{p.tipo_label}</span>
                         <SeloPrazo p={p} />
                         <SeloPlanejada p={p} />
+                        <SeloReprogramada p={p} />
                         {(p.encerrada || !podeOperar) && <SeloStatus p={p} />}
                     </div>
                     <p className="mt-1 whitespace-pre-line text-sm text-white/70">{p.descricao}</p>
@@ -351,6 +466,12 @@ function LinhaPendencia({ p, podeOperar, opcoes, podeComentar, emFoco }) {
                         <MessageSquareText size={12} /> Comentar
                     </button>
                 )}
+                {podeReprogramar && (
+                    <button type="button" onClick={() => onReprogramar([p.id])}
+                            className="inline-flex items-center gap-1 font-semibold text-white/45 hover:text-white/80">
+                        <CalendarClock size={12} /> Reprogramar
+                    </button>
+                )}
             </div>
 
             {erro && <p className="mt-2 text-xs text-red-300">{erro}</p>}
@@ -398,6 +519,61 @@ function ConcluirDialog({ p, onFechar }) {
                         <button type="submit" disabled={form.processing || !form.data.texto.trim()}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40">
                             <Check size={14} strokeWidth={3} /> {form.processing ? 'Concluindo…' : 'Concluir e avisar'}
+                        </button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * Reprogramar (TKT-0041): prazo e dia planejado de uma ou várias pendências para a mesma data. O
+ * motivo pronto ("Meta batida – reprogramado") vai estruturado no histórico; o texto é opcional.
+ */
+function ReprogramarDialog({ ids, empresas, opcoes, onFechar, onFeito }) {
+    const form = useForm({ ids, data: '', motivo_padrao: '', motivo: '' });
+    const motivos = opcoes?.motivos_reprogramacao ?? [];
+    const enviar = (ev) => {
+        ev.preventDefault();
+        form.post(route('mlb.polos-painel.pendencias-conta.reprogramar'), { ...OPCOES_GRAVAR, onSuccess: () => onFeito(ids) });
+    };
+    const varias = ids.length > 1;
+
+    return (
+        <Dialog open onOpenChange={(v) => { if (!v) onFechar(); }}>
+            <DialogContent className="max-w-md border-white/[0.1] bg-ecf-card">
+                <DialogHeader>
+                    <DialogTitle className="text-white">{varias ? `Reprogramar ${ids.length} pendências` : 'Reprogramar pendência'}</DialogTitle>
+                    <DialogDescription className="text-white/50">
+                        {varias && `${empresas} empresa(s). `}O prazo e o dia planejado passam para a nova data: a pendência sai das atrasadas e da
+                        lista do dia. O prazo anterior fica no histórico, e quem pediu e o Analista de Conta são avisados.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={enviar} className="space-y-3">
+                    <Campo rotulo="Nova data (dia de semana)" erro={form.errors.data ?? form.errors.ids}>
+                        <input type="date" value={form.data.data} min={hojeIso()} required autoFocus onChange={(e) => form.setData('data', e.target.value)}
+                               className={cn(CLASSE_ENTRADA, '[color-scheme:dark]')} />
+                    </Campo>
+                    <Campo rotulo="Motivo (opcional)" erro={form.errors.motivo ?? form.errors.motivo_padrao}>
+                        {motivos.length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                                {motivos.map((m) => (
+                                    <Opcao key={m.valor} ativo={form.data.motivo_padrao === m.valor}
+                                           onClick={() => form.setData('motivo_padrao', form.data.motivo_padrao === m.valor ? '' : m.valor)}>
+                                        {m.rotulo}
+                                    </Opcao>
+                                ))}
+                            </div>
+                        )}
+                        <textarea value={form.data.motivo} onChange={(e) => form.setData('motivo', e.target.value)} rows={2} maxLength={1000}
+                                  placeholder="Ex.: empresa já bateu a meta, a prioridade é outra" className={CLASSE_ENTRADA} />
+                    </Campo>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                        <button type="button" onClick={onFechar} className="rounded-lg px-3 py-2 text-sm font-semibold text-white/60 hover:text-white">Voltar</button>
+                        <button type="submit" disabled={form.processing || !form.data.data}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-ecf-yellow px-3 py-2 text-sm font-semibold text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40">
+                            <CalendarClock size={14} /> {form.processing ? 'Reprogramando…' : 'Reprogramar'}
                         </button>
                     </div>
                 </form>

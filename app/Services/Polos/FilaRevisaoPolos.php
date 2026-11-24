@@ -2,6 +2,7 @@
 
 namespace App\Services\Polos;
 
+use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
 use App\Models\Configuracao;
 use App\Models\MlbEmpresa;
@@ -478,6 +479,37 @@ class FilaRevisaoPolos
         }
 
         return $cards;
+    }
+
+    /**
+     * Linhas do Faturamento Polos do mês corrente por mlb_empresa_id, e um aviso quando não há o
+     * mês corrente. A fila de revisão e a fila do Analista de Conta (meta batida, TKT-0041) leem
+     * daqui, para as duas mostrarem o mesmo % da meta.
+     *
+     * @return array{0: array<int, array<string,mixed>>, 1: ?string}
+     */
+    public static function faturamentoDoMes(): array
+    {
+        try {
+            $r = app(PolosController::class)->linhasDoMesCorrente();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [[], 'Faturamento indisponível agora (o ECF Drive não respondeu). A fila segue sem os números do mês.'];
+        }
+
+        if ($r === null) {
+            return [[], 'Faturamento indisponível: o arquivo POLOS MENSAL não está no ECF Drive.'];
+        }
+
+        $linhas = collect($r['linhas'])
+            ->filter(fn ($l) => ! empty($l['mlb_empresa_id']))
+            ->keyBy(fn ($l) => (int) $l['mlb_empresa_id'])
+            ->all();
+
+        $aviso = $r['parcial'] ? null : 'O mês corrente ainda não chegou do ECF Drive: faturamento e % da meta são do último mês fechado.';
+
+        return [$linhas, $aviso];
     }
 
     /**

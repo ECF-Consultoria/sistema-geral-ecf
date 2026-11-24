@@ -716,4 +716,152 @@ class PendenciasContaTest extends TestCase
         $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta'))
             ->assertInertia(fn (Assert $pg) => $pg->where('podeAcompanhar', false));
     }
+
+    // ─── Reprogramar (TKT-0041) ─────────────────────────────────────────────
+
+    private function reprogramar(array $ids, ?string $data, User $quem, array $extra = [])
+    {
+        return $this->actingAs($quem)->post(route('mlb.polos-painel.pendencias-conta.reprogramar'), array_merge(['ids' => $ids, 'data' => $data], $extra));
+    }
+
+    public function test_coordenacao_reprograma_em_lote_e_a_pendencia_sai_do_atraso_e_da_lista_do_dia(): void
+    {
+        Notification::fake();
+        // Em produção a Débora (coordenação) é admin e não tem o papel de Analista de Conta.
+        $debora   = User::factory()->create(['role' => 'admin', 'name' => 'Débora']);
+        $x        = $this->empresa('Empresa X', $this->jhonatan);
+        $z        = $this->empresa('Empresa Z', $this->elvis);
+        $atrasada = $this->pendencia($x, ['prazo' => '2026-11-09']);
+        $ficou    = $this->pendencia($x, ['prazo' => '2026-11-10', 'data_planejada' => '2026-11-10', 'analista_id' => $this->bruno->id]);
+        $doElvis  = $this->pendencia($z, ['prazo' => '2026-11-20', 'solicitante_id' => $this->elvis->id]);
+
+        $antes = app(PendenciasContaPolos::class)->fila(now());
+        $this->assertSame(2, $antes['resumo']['atrasadas']);
+        $this->assertSame(2, $antes['resumo']['para_hoje']);
+
+        $this->reprogramar([$atrasada->id, $ficou->id, $doElvis->id], '2026-12-07', $debora,
+            ['motivo_padrao' => 'meta_batida', 'motivo' => 'prioridade é quem não bateu'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', '3 pendências reprogramadas para 07/12.');
+
+        foreach ([$atrasada, $ficou, $doElvis] as $p) {
+            $p->refresh();
+            $this->assertSame('2026-12-07', $p->prazo->toDateString());
+            $this->assertSame('2026-12-07', $p->data_planejada->toDateString());
+        }
+        // Reprogramar não faz da coordenação o Analista de Conta da pendência.
+        $this->assertNull($atrasada->analista_id);
+        $this->assertSame($this->bruno->id, (int) $ficou->analista_id);
+
+        // Saiu do atraso e da lista do dia; dias de atraso zerados.
+        $depois = app(PendenciasContaPolos::class)->fila(now());
+        $this->assertSame([0, 0, 0], [$depois['resumo']['atrasadas'], $depois['resumo']['para_hoje'], $depois['resumo']['para_tras']]);
+        $linhas = collect($depois['abertas'])->flatMap(fn ($e) => $e['pendencias'])->keyBy('id');
+        $this->assertFalse($linhas[$atrasada->id]['atrasada']);
+        $this->assertSame(0, $linhas[$atrasada->id]['dias_atraso']);
+        $this->assertFalse($linhas[$atrasada->id]['depois_do_prazo']);
+        $this->assertSame([
+            'prazo_era' => '09/11/2026', 'motivo' => 'Meta batida – reprogramado — prioridade é quem não bateu',
+            'motivo_padrao' => 'meta_batida', 'por' => 'Débora', 'em' => '11/11/2026',
+        ], $linhas[$atrasada->id]['reprogramada']);
+
+        // Histórico: quem, data antiga e nova do prazo e do dia planejado, e o motivo.
+        $ev = collect($linhas[$ficou->id]['historico'])->firstWhere('tipo', 'reprogramada');
+        $this->assertSame('Débora', $ev['por']);
+        $this->assertSame('reprogramou: prazo 10/11 → 07/12 · dia planejado 10/11 → 07/12', $ev['resumo']);
+        $this->assertSame('Meta batida – reprogramado — prioridade é quem não bateu', $ev['texto']);
+        $this->assertSame('reprogramou: prazo 09/11 → 07/12 · dia planejado sem data → 07/12',
+            collect($linhas[$atrasada->id]['historico'])->firstWhere('tipo', 'reprogramada')['resumo']);
+        // O motivo pronto fica estruturado, para filtrar depois.
+        $this->assertSame(['data_planejada_de' => null, 'data_planejada_para' => '2026-12-07', 'motivo' => 'meta_batida'],
+            PolosPendenciaContaEvento::where('pendencia_id', $atrasada->id)->where('tipo', 'reprogramada')->sole()->meta);
+
+        // Um aviso por pessoa: o Jhonatan pediu duas, o Elvis uma, o Bruno tinha pegado uma.
+        Notification::assertSentToTimes($this->jhonatan, PendenciaContaNotification::class, 1);
+        Notification::assertSentTo($this->jhonatan, PendenciaContaNotification::class,
+            fn ($n) => $n->titulo === '2 pendências reprogramadas para 07/12' && str_contains($n->mensagem, 'Motivo: Meta batida – reprogramado'));
+        Notification::assertSentTo($this->elvis, PendenciaContaNotification::class, fn ($n) => $n->titulo === 'Pendência reprogramada: Empresa Z');
+        Notification::assertSentToTimes($this->bruno, PendenciaContaNotification::class, 1);
+        Notification::assertNotSentTo($debora, PendenciaContaNotification::class);
+
+        // De novo para a mesma data: nada muda e nada vai para o histórico.
+        $this->reprogramar([$atrasada->id], '2026-12-07', $debora)->assertSessionHas('success', 'Nada mudou.');
+        $this->assertSame(1, PolosPendenciaContaEvento::where('pendencia_id', $atrasada->id)->where('tipo', 'reprogramada')->count());
+    }
+
+    public function test_responsavel_reprograma_so_as_da_carteira_e_o_analista_de_conta_todas(): void
+    {
+        $x   = $this->empresa('Empresa X', $this->jhonatan);
+        $z   = $this->empresa('Empresa Z', $this->elvis);
+        $daX = $this->pendencia($x);
+        $daZ = $this->pendencia($z, ['prazo' => '2026-11-09']);
+
+        // O Elvis manda as duas: a da carteira dele muda; a do Jhonatan fica como estava.
+        $this->reprogramar([$daX->id, $daZ->id], '2026-11-30', $this->elvis)
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', 'Pendência reprogramada para 30/11. Ficaram como estavam: 1 fora da sua carteira.');
+        $this->assertSame('2026-11-30', $daZ->fresh()->prazo->toDateString());
+        $this->assertSame('2026-11-20', $daX->fresh()->prazo->toDateString());
+        $this->assertNull($daZ->fresh()->analista_id);
+
+        // Só a do outro: 403, sem gravar.
+        $this->reprogramar([$daX->id], '2026-11-30', $this->elvis)->assertForbidden();
+        $this->assertSame('2026-11-20', $daX->fresh()->prazo->toDateString());
+        // Quem não abre a fila não reprograma.
+        $this->reprogramar([$daX->id], '2026-11-30', User::factory()->create(['role' => 'consultor']))->assertForbidden();
+
+        // O Analista de Conta reprograma qualquer uma e vira quem pegou.
+        $this->reprogramar([$daX->id], '2026-11-30', $this->bruno)->assertSessionHasNoErrors();
+        $this->assertSame('2026-11-30', $daX->fresh()->data_planejada->toDateString());
+        $this->assertSame($this->bruno->id, (int) $daX->fresh()->analista_id);
+
+        // Data obrigatória, dia de semana, de hoje em diante; motivo pronto só da lista.
+        $this->reprogramar([$daX->id], null, $this->bruno)->assertSessionHasErrors('data');
+        $this->reprogramar([$daX->id], '2026-11-10', $this->bruno)->assertSessionHasErrors('data');
+        $this->reprogramar([$daX->id], '2026-11-14', $this->bruno)->assertSessionHasErrors('data'); // sábado
+        $this->reprogramar([$daX->id], '2026-11-30', $this->bruno, ['motivo_padrao' => 'inventado'])->assertSessionHasErrors('motivo_padrao');
+
+        // Encerrada não muda.
+        $daZ->update(['status' => 'concluida', 'concluida_em' => now()]);
+        $this->reprogramar([$daZ->id], '2026-12-01', $this->elvis)
+            ->assertSessionHas('success', 'Nada mudou. Ficaram como estavam: 1 já encerrada(s).');
+        $this->assertSame('2026-11-30', $daZ->fresh()->prazo->toDateString());
+
+        // O arrastar da agenda continua só do Analista de Conta (12/11).
+        $this->planejar([$daX->id], '2026-12-02', $this->elvis)->assertForbidden();
+    }
+
+    public function test_fila_mostra_se_a_empresa_ja_bateu_a_meta_do_mes(): void
+    {
+        $bateu   = $this->empresa('Bateu', $this->jhonatan);
+        $falta   = $this->empresa('Em progresso', $this->jhonatan);
+        $semMeta = $this->empresa('M1 sem meta', $this->jhonatan);
+        foreach ([$bateu, $falta, $semMeta] as $e) {
+            $this->pendencia($e);
+        }
+
+        // Linhas no formato do Faturamento Polos (FilaRevisaoPolos::faturamentoDoMes).
+        $fila = app(PendenciasContaPolos::class)->fila(now(), [
+            $bateu->id   => ['faturamento' => 12000.0, 'meta' => 10000.0, 'pct' => 120.0],
+            $falta->id   => ['faturamento' => 2800.0, 'meta' => 10000.0, 'pct' => 28.0],
+            $semMeta->id => ['faturamento' => 500.0, 'meta' => 0.0, 'pct' => 0.0],
+        ]);
+        $metas = collect($fila['abertas'])->pluck('meta', 'nome');
+
+        $this->assertTrue($metas['Bateu']['bateu']);
+        $this->assertSame(0.0, $metas['Bateu']['faltam']);
+        $this->assertFalse($metas['Em progresso']['bateu']);
+        $this->assertSame(28.0, $metas['Em progresso']['pct']);
+        $this->assertSame(7200.0, $metas['Em progresso']['faltam']);
+        $this->assertNull($metas['M1 sem meta']);
+
+        // Sem o mês no ECF Drive (o Http::fake do setUp), a tela abre sem selo e avisa.
+        $this->actingAs($this->bruno)->get(route('mlb.polos-painel.analista-conta'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $pg) => $pg->where('fila.abertas.0.meta', null)
+                ->where('avisoMeta', fn ($v) => $v !== null)
+                ->where('podeReprogramarTodas', true));
+        $this->actingAs($this->elvis)->get(route('mlb.polos-painel.analista-conta'))
+            ->assertInertia(fn (Assert $pg) => $pg->where('podeReprogramarTodas', false));
+    }
 }

@@ -42,6 +42,10 @@ use Illuminate\Support\Facades\Notification;
  *  - **Planejar depois do prazo avisa quem pediu** — um aviso por pessoa a cada planejamento,
  *    mesmo quando várias pendências mudam de uma vez (seleção em massa).
  *  - **Acompanhamento (fatia 3)** é da coordenação e da liderança: admin ou líder de setor.
+ *  - **Reprogramar (TKT-0041)** leva o prazo pedido E o dia planejado para a mesma data, de uma
+ *    ou de várias pendências: o fim do mês, em que as empresas que já bateram a meta vão para
+ *    depois do fechamento. Pode o Analista de Conta, a coordenação (admin) e o responsável da
+ *    empresa (só na carteira dele). O arrastar da agenda continua só do Analista de Conta.
  */
 class PendenciasContaPolos
 {
@@ -54,6 +58,11 @@ class PendenciasContaPolos
         PolosPendenciaConta::STATUS_AGUARDANDO_SELLER,
         PolosPendenciaConta::STATUS_DEVOLVIDA,
         PolosPendenciaConta::STATUS_CANCELADA,
+    ];
+
+    /** Motivos prontos da reprogramação (TKT-0041); o código vai no histórico para filtrar depois. */
+    public const MOTIVOS_REPROGRAMACAO = [
+        'meta_batida' => 'Meta batida – reprogramado',
     ];
 
     /** Concluídas que a fila de revisão ainda mostra na empresa: "o que foi feito". */
@@ -85,6 +94,27 @@ class PendenciasContaPolos
             ->whereIn('setor_id', $u->setores()->where('setores.is_system', false)->pluck('setores.id'))
             ->where('permission_key', Permissions::MLB_ANALISTA_CONTA)
             ->exists();
+    }
+
+    /**
+     * Reprogramar qualquer pendência (TKT-0041): o Analista de Conta e a coordenação (admin). A
+     * Débora pediu em 24/11 que ela e os analistas de Ads mudem prazo e dia — o "só o Analista de
+     * Conta" de 12/11 continua valendo para o arrastar da agenda (podePlanejar).
+     */
+    public static function podeReprogramarTodas(User $u): bool
+    {
+        return $u->isAdmin() || self::podePlanejar($u);
+    }
+
+    /** Uma pendência: quem reprograma todas, ou o responsável da empresa (a carteira dele). */
+    public static function podeReprogramar(User $u, PolosPendenciaConta $p): bool
+    {
+        if (self::podeReprogramarTodas($u)) {
+            return true;
+        }
+        $p->loadMissing('empresa.implementacao:id,empresa_id,responsavel_id');
+
+        return $p->empresa !== null && self::podeEncaminhar($u, $p->empresa);
     }
 
     public static function podeVer(User $u): bool
@@ -126,6 +156,7 @@ class PendenciasContaPolos
             'prioridades'    => $par(PolosPendenciaConta::PRIORIDADES),
             'status'         => $par(PolosPendenciaConta::STATUS),
             'status_manuais' => self::STATUS_MANUAIS,
+            'motivos_reprogramacao' => $par(self::MOTIVOS_REPROGRAMACAO),
         ];
     }
 
@@ -312,6 +343,91 @@ class PendenciasContaPolos
     }
 
     /**
+     * Reprogramar (TKT-0041): leva o prazo pedido E o dia planejado de uma ou várias pendências em
+     * aberto para `$data`. Prazo de hoje em diante tira a pendência de "atrasadas" (atrasada()
+     * olha o prazo) e zera os dias de atraso; o dia planejado novo a tira de "Para hoje". O prazo
+     * e o dia anteriores ficam no histórico, com o motivo.
+     *
+     * Cada pendência confere a permissão (podeReprogramar): o analista de Ads só reprograma as
+     * da carteira dele, e as outras são contadas em `sem_permissao`, como as encerradas em
+     * `encerradas` — ninguém é barrado pela seleção em lote ter uma que não é dele.
+     *
+     * Quem pediu e o Analista de Conta que pegou recebem um aviso por pessoa, juntando as
+     * pendências (o lote de 17 não vira 17 avisos). Quem reprogramou não é avisado.
+     *
+     * @param  array<int, int>  $ids
+     * @return array{mudaram:int, sem_permissao:int, encerradas:int}
+     */
+    public function reprogramar(array $ids, string $data, User $quem, ?string $motivo = null, ?string $motivoPadrao = null): array
+    {
+        $data   = CarbonImmutable::parse($data, self::TZ)->toDateString();
+        $ids    = array_values(array_unique(array_map('intval', $ids)));
+        $padrao = isset(self::MOTIVOS_REPROGRAMACAO[$motivoPadrao]) ? $motivoPadrao : null;
+        // O motivo pronto abre o texto; o que a pessoa escreveu vem depois.
+        $texto  = implode(' — ', array_filter([$padrao ? self::MOTIVOS_REPROGRAMACAO[$padrao] : null, trim((string) $motivo)], fn ($t) => $t !== null && $t !== ''));
+
+        return DB::transaction(function () use ($ids, $data, $quem, $padrao, $texto) {
+            $ehAnalista = self::podePlanejar($quem);
+            $todas      = $ehAnalista || $quem->isAdmin();
+
+            $pendencias = PolosPendenciaConta::with(['empresa:id,nome,responsavel_id', 'empresa.implementacao:id,empresa_id,responsavel_id', 'solicitante', 'analista'])
+                ->whereIn('id', $ids)->orderBy('id')->get();
+
+            $mudaram   = [];
+            $semPerm   = 0;
+            $fechadas  = 0;
+            $avisos    = [];
+            foreach ($pendencias as $p) {
+                if (! $todas && ($p->empresa === null || ! self::podeEncaminhar($quem, $p->empresa))) {
+                    $semPerm++;
+
+                    continue;
+                }
+                if ($p->encerrada()) {
+                    $fechadas++;
+
+                    continue;
+                }
+
+                $prazoDe = $p->prazo?->toDateString();
+                $diaDe   = $p->data_planejada?->toDateString();
+                if ($prazoDe === $data && $diaDe === $data) {
+                    continue;
+                }
+
+                $attrs = ['prazo' => $data, 'data_planejada' => $data];
+                // Só o Analista de Conta vira "quem pegou"; a coordenação reprogramar não o torna dono.
+                if ($ehAnalista && $p->analista_id === null) {
+                    $attrs['analista_id'] = $quem->id;
+                }
+                $p->fill($attrs)->save();
+
+                $this->evento($p, $quem, PolosPendenciaContaEvento::REPROGRAMADA, de: $prazoDe, para: $data, texto: $texto !== '' ? $texto : null,
+                    meta: ['data_planejada_de' => $diaDe, 'data_planejada_para' => $data] + ($padrao ? ['motivo' => $padrao] : []));
+                $mudaram[] = $p->id;
+
+                foreach ([$p->solicitante, $p->analista] as $u) {
+                    if ($u !== null && $u->id !== $quem->id) {
+                        $avisos[$u->id]['para']           = $u;
+                        $avisos[$u->id]['lista'][$p->id] = $p;
+                    }
+                }
+            }
+
+            if ($mudaram !== []) {
+                $this->log($quem, null, count($mudaram) . " pendência(s) do Analista de Conta reprogramada(s) para {$data}",
+                    ['pendencias' => $mudaram, 'data' => $data, 'motivo' => $texto !== '' ? $texto : null, 'motivo_padrao' => $padrao]);
+            }
+
+            foreach ($avisos as $a) {
+                $this->avisarReprogramadas($a['para'], array_values($a['lista']), $data, $texto, $quem);
+            }
+
+            return ['mudaram' => count($mudaram), 'sem_permissao' => $semPerm, 'encerradas' => $fechadas];
+        });
+    }
+
+    /**
      * Prioridade (fatia 2): quem pediu sobe ou desce para pedir antecipação — o Analista de Conta
      * é avisado e replaneja. Quando é o Analista de Conta que muda, quem pediu é avisado.
      */
@@ -345,9 +461,13 @@ class PendenciasContaPolos
      * A fila do Analista de Conta: empresas com pendência na fila (ordem: prazo pedido, depois
      * prioridade) e as encerradas nos últimos 30 dias (mais recente primeiro).
      *
+     * `$faturamento` = linhas do Faturamento Polos por mlb_empresa_id (FilaRevisaoPolos::faturamentoDoMes),
+     * para cada empresa dizer se já bateu a meta do mês (TKT-0041). Vazio = sem o número.
+     *
+     * @param  array<int, array<string,mixed>>  $faturamento
      * @return array{resumo: array<string,int>, abertas: list<array>, encerradas: list<array>}
      */
-    public function fila(CarbonInterface $hoje): array
+    public function fila(CarbonInterface $hoje, array $faturamento = []): array
     {
         $hoje  = CarbonImmutable::parse($hoje->toDateString(), self::TZ);
         $carga = ['empresa:id,nome,cust_id,fase,polo,responsavel_id', 'empresa.responsavel:id,name',
@@ -379,8 +499,34 @@ class PendenciasContaPolos
                 'concluidas_hoje' => $encerradas->filter(fn ($p) => $p->status === PolosPendenciaConta::STATUS_CONCLUIDA
                     && $p->concluida_em?->copy()->setTimezone(self::TZ)->toDateString() === $hoje->toDateString())->count(),
             ],
-            'abertas'    => $this->porEmpresa($abertas->sort(fn ($a, $b) => self::comparar($a, $b)), $hoje),
-            'encerradas' => $this->porEmpresa($encerradas, $hoje),
+            'abertas'    => $this->porEmpresa($abertas->sort(fn ($a, $b) => self::comparar($a, $b)), $hoje, $faturamento),
+            'encerradas' => $this->porEmpresa($encerradas, $hoje, $faturamento),
+        ];
+    }
+
+    /**
+     * Meta do mês da empresa (TKT-0041), do Faturamento Polos: bateu = faturamento ≥ meta, o
+     * mesmo "No alvo" da fila de revisão (FilaRevisaoPolos::sinais, pct ≥ 100). Sem meta (M1)
+     * ou sem a linha do mês = null — a tela não mostra selo em vez de chutar.
+     *
+     * @param  array<string,mixed>|null  $fat
+     * @return array{pct: float, faturamento: float, meta: float, faltam: float, bateu: bool}|null
+     */
+    public static function metaDaEmpresa(?array $fat): ?array
+    {
+        $meta = (float) ($fat['meta'] ?? 0);
+        if ($fat === null || $meta <= 0) {
+            return null;
+        }
+        $faturamento = (float) ($fat['faturamento'] ?? 0);
+        $pct         = isset($fat['pct']) ? (float) $fat['pct'] : round($faturamento / $meta * 100, 1);
+
+        return [
+            'pct'         => $pct,
+            'faturamento' => $faturamento,
+            'meta'        => $meta,
+            'faltam'      => round(max($meta - $faturamento, 0), 2),
+            'bateu'       => $pct >= 100,
         ];
     }
 
@@ -648,8 +794,9 @@ class PendenciasContaPolos
      * primeira pendência na lista já ordenada.
      *
      * @param  Collection<int, PolosPendenciaConta>  $pendencias
+     * @param  array<int, array<string,mixed>>  $faturamento
      */
-    private function porEmpresa(Collection $pendencias, CarbonImmutable $hoje): array
+    private function porEmpresa(Collection $pendencias, CarbonImmutable $hoje, array $faturamento = []): array
     {
         $empresas = [];
         foreach ($pendencias as $p) {
@@ -662,6 +809,7 @@ class PendenciasContaPolos
                 'polo'        => $e->polo,
                 'responsavel'    => FilaRevisaoPolos::responsavelNome($e),
                 'responsavel_id' => FilaRevisaoPolos::responsavelId($e),
+                'meta'           => self::metaDaEmpresa($faturamento[$e->id] ?? null),
                 'atrasada'    => false,
                 'pendencias'  => [],
             ];
@@ -705,7 +853,30 @@ class PendenciasContaPolos
             'conclusao'        => $p->conclusao,
             'mlbs_alterados'   => $p->mlbs_alterados ?? [],
             'concluida_em'     => $p->concluida_em?->copy()->setTimezone(self::TZ)->format('d/m/Y H:i'),
+            'reprogramada'     => self::ultimaReprogramacao($p),
             'historico'        => $comHistorico ? $this->historicoDe($p) : null,
+        ];
+    }
+
+    /**
+     * A última reprogramação (TKT-0041), para o selo da linha. Só com o histórico já carregado —
+     * o cartão da fila de revisão não carrega e não paga uma consulta por pendência.
+     *
+     * @return array{prazo_era: ?string, motivo: ?string, motivo_padrao: ?string, por: string, em: ?string}|null
+     */
+    private static function ultimaReprogramacao(PolosPendenciaConta $p): ?array
+    {
+        if (! $p->relationLoaded('eventos')) {
+            return null;
+        }
+        $ev = $p->eventos->last(fn (PolosPendenciaContaEvento $e) => $e->tipo === PolosPendenciaContaEvento::REPROGRAMADA);
+
+        return $ev === null ? null : [
+            'prazo_era'     => $ev->de ? CarbonImmutable::parse($ev->de, self::TZ)->format('d/m/Y') : null,
+            'motivo'        => $ev->texto,
+            'motivo_padrao' => $ev->meta['motivo'] ?? null,
+            'por'           => $ev->usuario?->name ?? 'Usuário removido',
+            'em'            => $ev->created_at?->copy()->setTimezone(self::TZ)->format('d/m/Y'),
         ];
     }
 
@@ -770,6 +941,11 @@ class PendenciasContaPolos
             },
             PolosPendenciaContaEvento::PRIORIDADE => 'mudou a prioridade de ' . (PolosPendenciaConta::PRIORIDADES[$ev->de] ?? $ev->de)
                 . ' para ' . (PolosPendenciaConta::PRIORIDADES[$ev->para] ?? $ev->para),
+            // TKT-0041: data antiga e nova do prazo e do dia planejado; o motivo vem no texto.
+            PolosPendenciaContaEvento::REPROGRAMADA => 'reprogramou: prazo ' . ($ev->de ? self::diaMes($ev->de) : 'sem prazo')
+                . ' → ' . self::diaMes($ev->para) . ' · dia planejado '
+                . (($ev->meta['data_planejada_de'] ?? null) ? self::diaMes($ev->meta['data_planejada_de']) : 'sem data')
+                . ' → ' . self::diaMes($ev->meta['data_planejada_para'] ?? $ev->para),
             default                               => $ev->tipo,
         };
     }
@@ -797,6 +973,26 @@ class PendenciasContaPolos
         $this->avisar($para, $quem, null, count($lista) . ' pendências planejadas depois do prazo',
             "{$quem->name} planejou para depois do prazo pedido: {$empresas}.",
             route('mlb.polos-painel.analista-conta', ['minhas' => 1], false));
+    }
+
+    /** @param  list<PolosPendenciaConta>  $lista  pendências reprogramadas que interessam a UMA pessoa */
+    private function avisarReprogramadas(User $para, array $lista, string $data, string $motivo, User $quem): void
+    {
+        $dia    = self::diaMes($data);
+        $porque = $motivo !== '' ? " Motivo: {$motivo}." : '';
+        if (count($lista) === 1) {
+            $p = $lista[0];
+            $this->avisar($para, $quem, $p, 'Pendência reprogramada: ' . ($p->empresa?->nome ?? 'empresa'),
+                "{$quem->name} passou o prazo e o dia planejado para {$dia}.{$porque}");
+
+            return;
+        }
+
+        // O motivo antes da lista de empresas: a mensagem do sino corta em 200 caracteres.
+        $empresas = collect($lista)->map(fn ($p) => $p->empresa?->nome ?? 'empresa')->unique()->implode(', ');
+        $this->avisar($para, $quem, null, count($lista) . " pendências reprogramadas para {$dia}",
+            "{$quem->name} passou o prazo e o dia planejado.{$porque} {$empresas}.",
+            route('mlb.polos-painel.analista-conta', [], false));
     }
 
     /** @param  UploadedFile[]  $arquivos */

@@ -178,25 +178,6 @@ class PolosFilaController extends Controller
      */
     private function faturamento(): array
     {
-        try {
-            $r = app(PolosController::class)->linhasDoMesCorrente();
-        } catch (\Throwable $e) {
-            report($e);
-
-            return [[], 'Faturamento indisponível agora (o ECF Drive não respondeu). A fila segue sem os números do mês.'];
-        }
-
-        if ($r === null) {
-            return [[], 'Faturamento indisponível: o arquivo POLOS MENSAL não está no ECF Drive.'];
-        }
-
-        $linhas = collect($r['linhas'])
-            ->filter(fn ($l) => ! empty($l['mlb_empresa_id']))
-            ->keyBy(fn ($l) => (int) $l['mlb_empresa_id'])
-            ->all();
-
-        $aviso = $r['parcial'] ? null : 'O mês corrente ainda não chegou do ECF Drive: faturamento e % da meta são do último mês fechado.';
-
-        return [$linhas, $aviso];
+        return FilaRevisaoPolos::faturamentoDoMes();
     }
 }

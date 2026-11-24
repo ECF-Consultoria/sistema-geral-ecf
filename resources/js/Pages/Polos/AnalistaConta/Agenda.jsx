@@ -127,7 +127,10 @@ export default function AgendaAnalistaConta({ agenda, podePlanejar = false, pode
                 {!podePlanejar && (
                     <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.05] p-3">
                         <Eye size={15} className="text-sky-300 mt-0.5 shrink-0" />
-                        <p className="text-sky-100/80 text-xs">Você vê a agenda; só o Analista de Conta move os cartões.</p>
+                        <p className="text-sky-100/80 text-xs">
+                            Você vê a agenda; só o Analista de Conta move os cartões. Para levar pendências para outra data (prazo e dia planejado),
+                            use <Link href={route('mlb.polos-painel.analista-conta')} className="font-semibold text-sky-200 hover:underline">Reprogramar na Fila</Link>.
+                        </p>
                     </div>
                 )}
 
