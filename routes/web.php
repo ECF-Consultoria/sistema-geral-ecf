@@ -1816,6 +1816,7 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/sync-vendas-pub', [MlbController::class, 'syncVendasPublicador'])->name('sync-vendas-pub');
     Route::get('/historico',   [MlbController::class, 'historico'])->name('historico');
     Route::get('/revisao',     [MlbController::class, 'revisao'])->name('revisao');
+    Route::get('/revisao/exportar', [MlbController::class, 'exportarRevisao'])->name('revisao.exportar');
 
     Route::patch('/pub/{pub}/vendido',           [MlbController::class, 'marcarVendido'])->name('vendido');
 

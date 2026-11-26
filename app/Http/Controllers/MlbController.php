@@ -20,6 +20,7 @@ use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Services\PlanoMetasPublicacaoService;
 use App\Services\RevisaoService;
 use App\Services\VendasSyncService;
+use App\Support\PlanilhaXlsx;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -1356,17 +1357,31 @@ class MlbController extends Controller
      * Aba Fila — a lista de trabalho do líder.
      * Por padrão mostra só o que espera ação dele (não revisado + reconferir).
      */
-    private function revisaoFila(Request $request, string $mesRef): array
+    /**
+     * Filtros da Fila, normalizados. A tela e a planilha leem daqui — assim a
+     * planilha sai com exatamente o recorte que a tela mostra.
+     *
+     * ATENÇÃO: `input($k, $default)` NÃO cai no default quando a chave existe
+     * com valor nulo — e o middleware global ConvertEmptyStringsToNull
+     * transforma `?sev=` em null. Como a tela reenvia todos os filtros a cada
+     * navegação, os vazios chegam como null. Normalizar aqui.
+     */
+    private function filtrosRevisao(Request $request): array
     {
-        // ATENÇÃO: `input($k, $default)` NÃO cai no default quando a chave existe
-        // com valor nulo — e o middleware global ConvertEmptyStringsToNull
-        // transforma `?sev=` em null. Como a tela reenvia todos os filtros a cada
-        // navegação, os vazios chegam como null. Normalizar aqui.
-        $funcId     = (string) ($request->input('func') ?? '');
-        $status     = (string) ($request->input('status') ?: 'pendentes');
-        $severidade = (string) ($request->input('sev') ?? '');
-        $busca      = (string) ($request->input('busca') ?? '');
+        return [
+            (string) ($request->input('func') ?? ''),
+            (string) ($request->input('status') ?: 'pendentes'),
+            (string) ($request->input('sev') ?? ''),
+            (string) ($request->input('busca') ?? ''),
+        ];
+    }
 
+    /**
+     * Base da Fila: competência + publicador + busca.
+     * Devolve [considerados, fora da metodologia].
+     */
+    private function baseRevisao(string $mesRef, string $funcId, string $busca): array
+    {
         // Sem recorte por cargo de propósito: um anúncio precisa ser revisado
         // independentemente do cargo que o autor tem hoje. A segmentação por
         // pessoa fica no filtro, onde é uma escolha e não uma omissão silenciosa.
@@ -1385,8 +1400,16 @@ class MlbController extends Controller
         // revisado" cobraria do líder um trabalho sem efeito. Continua alcançável
         // pelo filtro `desconsiderados` — que é por onde se desfaz.
         $foraDaMetodologia = (clone $base)->where('desconsiderado', true);
-        $desconsiderados   = (clone $foraDaMetodologia)->count();
         $base->considerado();
+
+        return [$base, $foraDaMetodologia];
+    }
+
+    private function revisaoFila(Request $request, string $mesRef): array
+    {
+        [$funcId, $status, $severidade, $busca] = $this->filtrosRevisao($request);
+        [$base, $foraDaMetodologia] = $this->baseRevisao($mesRef, $funcId, $busca);
+        $desconsiderados = (clone $foraDaMetodologia)->count();
 
         // KPIs contados NO BANCO, antes de qualquer paginação.
         // Antes eram contados sobre os 120 registros carregados — acima disso
@@ -1539,6 +1562,145 @@ class MlbController extends Controller
                 'corrigida_em'  => $d->corrigida_em?->format('d/m/Y H:i'),
             ])->values(),
         ];
+    }
+
+    /**
+     * Baixa em .xlsx o que a Fila mostra com os filtros atuais — sem o limite
+     * de 50 cards por coluna nem a paginação da lista.
+     *
+     * Uma linha por pendência em aberto (o anúncio se repete), para dar para
+     * filtrar no Excel por severidade, categoria ou texto do erro. Anúncio sem
+     * pendência sai numa linha só, com as colunas de pendência vazias.
+     *
+     * Com o filtro de severidade, só as pendências daquela severidade viram
+     * linha: "tudo que tem ajuste" não pode trazer junto as observações.
+     */
+    public function exportarRevisao(Request $request)
+    {
+        $this->checkPubAccess('revisao');
+
+        $mesRef = (string) ($request->input('mes') ?: $this->competenciaInicialRevisao());
+        [$funcId, $status, $severidade, $busca] = $this->filtrosRevisao($request);
+        [$base, $foraDaMetodologia] = $this->baseRevisao($mesRef, $funcId, $busca);
+
+        $query = $status === 'desconsiderados' ? $foraDaMetodologia : $base;
+
+        match ($status) {
+            // "Colunas por estado" = as três colunas da tela; aprovado fica fora.
+            'pendentes' => $query->whereIn('status_revisao', [Revisao::ST_NAO_REVISADO, Revisao::ST_EM_AJUSTE, Revisao::ST_RECONFERIR]),
+            Revisao::ST_NAO_REVISADO, Revisao::ST_APROVADO,
+            Revisao::ST_EM_AJUSTE, Revisao::ST_RECONFERIR => $query->comStatusRevisao($status),
+            default => null, // 'todos' e 'desconsiderados'
+        };
+
+        if ($severidade) {
+            $query->whereHas('pendencias', fn($q) => $q->pendente()->where('severidade', $severidade));
+        }
+
+        $publicacoes = $query
+            ->with([
+                'user:id,name',
+                'revisadoPor:id,name',
+                'desconsideradoPor:id,name',
+                'pendencias' => fn($q) => $q
+                    ->with('abertaPor:id,name', 'corrigidaPor:id,name')
+                    ->pendente()
+                    ->when($severidade, fn($q) => $q->where('severidade', $severidade))
+                    ->orderBy('aberta_em'),
+            ])
+            // Mesma ordem da lista: o que trava primeiro, depois o mais antigo.
+            ->orderByRaw("CASE status_revisao WHEN 'em_ajuste' THEN 1 WHEN 'reconferir' THEN 2 WHEN 'nao_revisado' THEN 3 ELSE 4 END")
+            ->orderBy('data')
+            ->orderBy('id')
+            ->get();
+
+        $comFora = $status === 'desconsiderados';
+
+        $colunas = array_values(array_filter([
+            ['key' => 'data',          'label' => 'Data',                'tipo' => 'data'],
+            ['key' => 'publicador',    'label' => 'Publicador',          'largura' => 24],
+            ['key' => 'loja',          'label' => 'Loja',                'largura' => 28],
+            ['key' => 'mlb',           'label' => 'MLB',                 'largura' => 16],
+            ['key' => 'status',        'label' => 'Status da revisão',   'largura' => 16],
+            ['key' => 'revisado_por',  'label' => 'Revisado por'],
+            ['key' => 'revisado_em',   'label' => 'Revisado em',         'tipo' => 'datahora'],
+            ['key' => 'vendido',       'label' => 'Vendido',             'largura' => 9],
+            $comFora ? ['key' => 'fora_por', 'label' => 'Fora da metodologia por'] : null,
+            $comFora ? ['key' => 'fora_em',  'label' => 'Fora da metodologia em', 'tipo' => 'datahora'] : null,
+            ['key' => 'severidade',    'label' => 'Severidade',          'largura' => 12],
+            ['key' => 'categoria',     'label' => 'Categoria',           'largura' => 16],
+            ['key' => 'pendencia',     'label' => 'Pendência',           'tipo' => 'texto_longo'],
+            ['key' => 'situacao',      'label' => 'Situação da pendência', 'largura' => 26],
+            ['key' => 'aberta_por',    'label' => 'Aberta por'],
+            ['key' => 'aberta_em',     'label' => 'Aberta em',           'tipo' => 'datahora'],
+            ['key' => 'dias',          'label' => 'Dias em aberto',      'tipo' => 'inteiro', 'largura' => 9],
+            ['key' => 'corrigida_por', 'label' => 'Corrigida por'],
+            ['key' => 'corrigida_em',  'label' => 'Corrigida em',        'tipo' => 'datahora'],
+        ]));
+
+        $situacao = [
+            Pendencia::ST_ABERTA    => 'Aberta — com o publicador',
+            Pendencia::ST_CORRIGIDA => 'Corrigida — aguarda reconferir',
+        ];
+
+        $linhas = [];
+        foreach ($publicacoes as $p) {
+            $anuncio = [
+                'data'         => $p->data?->format('Y-m-d'),
+                'publicador'   => $p->user?->name,
+                'loja'         => $p->empresa,
+                'mlb'          => $p->mlb_code,
+                'status'       => Revisao::STATUS[$p->status_revisao] ?? $p->status_revisao,
+                'revisado_por' => $p->revisadoPor?->name,
+                'revisado_em'  => $p->revisado_em?->format('Y-m-d H:i'),
+                'vendido'      => $p->vendido ? 'Sim' : 'Não',
+                'fora_por'     => $p->desconsideradoPor?->name,
+                'fora_em'      => $p->desconsiderado_em?->format('Y-m-d H:i'),
+                '_links'       => $p->mlb_code
+                    ? ['mlb' => 'https://produto.mercadolivre.com.br/' . str_replace('MLB', 'MLB-', $p->mlb_code)]
+                    : [],
+            ];
+
+            if ($p->pendencias->isEmpty()) {
+                $linhas[] = $anuncio;
+                continue;
+            }
+
+            foreach ($p->pendencias as $d) {
+                $linhas[] = $anuncio + [
+                    'severidade'    => Pendencia::SEVERIDADES[$d->severidade] ?? $d->severidade,
+                    'categoria'     => Pendencia::CATEGORIAS[$d->categoria] ?? $d->categoria,
+                    'pendencia'     => $d->texto,
+                    'situacao'      => $situacao[$d->status] ?? $d->status,
+                    'aberta_por'    => $d->abertaPor?->name,
+                    'aberta_em'     => $d->aberta_em?->format('Y-m-d H:i'),
+                    'dias'          => $d->idade_dias,
+                    'corrigida_por' => $d->corrigidaPor?->name,
+                    'corrigida_em'  => $d->corrigida_em?->format('Y-m-d H:i'),
+                ];
+            }
+        }
+
+        // O nome do arquivo carrega o recorte — quem recebe a planilha sabe o que tem nela.
+        $nome = collect([
+            'revisao',
+            $mesRef,
+            $status !== 'pendentes' ? str_replace('_', '-', $status) : null,
+            $severidade ?: null,
+            $funcId ? User::withTrashed()->find($funcId)?->name : null,
+            $busca ?: null,
+        ])->filter()->map(fn($s) => Str::slug((string) $s))->filter()->implode('-') . '.xlsx';
+
+        activity('mlb')
+            ->causedBy($request->user())
+            ->withProperties([
+                'mes' => $mesRef, 'func' => $funcId ?: null, 'status' => $status,
+                'sev' => $severidade ?: null, 'busca' => $busca ?: null,
+                'anuncios' => $publicacoes->count(), 'linhas' => count($linhas),
+            ])
+            ->log('Revisão exportada em planilha (' . $publicacoes->count() . ' anúncio(s))');
+
+        return PlanilhaXlsx::download($colunas, $linhas, $nome, 'Revisão ' . $mesRef, 'E2');
     }
 
     /**

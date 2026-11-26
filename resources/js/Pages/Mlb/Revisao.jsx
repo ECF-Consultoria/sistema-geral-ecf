@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import {
     AlertOctagon, AlertTriangle, MessageSquare, CheckCircle2, RotateCcw,
     ExternalLink, Clock, ListChecks, BarChart3, ChevronDown, ChevronRight,
-    Search, Undo2, ShieldCheck, Timer, Repeat, Ban,
+    Search, Undo2, ShieldCheck, Timer, Repeat, Ban, Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -637,6 +637,15 @@ function AbaFila({ colunas, publicacoes, kpis, filters, publicadores, podeRevisa
         ? Object.values(colunas).every(c => (c?.total ?? 0) === 0)
         : linhas.length === 0;
 
+    // Só os filtros já aplicados (o que a tela mostra), sem os vazios.
+    const urlPlanilha = route('mlb.revisao.exportar', Object.fromEntries(Object.entries({
+        mes:    filters.mesRef,
+        func:   filters.funcId,
+        status: filters.status,
+        sev:    filters.severidade,
+        busca:  filters.busca,
+    }).filter(([, v]) => v != null && v !== '')));
+
     return (
         <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
@@ -706,6 +715,16 @@ function AbaFila({ colunas, publicacoes, kpis, filters, publicadores, podeRevisa
                         className="w-full h-9 pl-8 pr-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none placeholder:text-white/20"
                     />
                 </div>
+
+                {/* Link comum (GET): o navegador baixa o .xlsx nativamente, com os
+                    mesmos filtros aplicados na tela — e sem o limite de 50 por coluna. */}
+                <a
+                    href={urlPlanilha}
+                    title="Baixa em Excel (.xlsx) tudo o que este filtro mostra, sem o limite da tela. Uma linha por pendência."
+                    className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/70 font-semibold hover:text-white hover:border-white/20 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                    <Download size={13} /> Baixar planilha
+                </a>
             </div>
 
             {podeRevisar && selecionados.length > 0 && (
